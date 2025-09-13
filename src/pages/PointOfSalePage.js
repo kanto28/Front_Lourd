@@ -1,5 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
@@ -11,9 +10,15 @@ import { ConfirmDialog, confirmDialog } from 'primereact/confirmdialog';
 import { InputNumber } from 'primereact/inputnumber';
 import Sidebar from '../components/Sidebar';
 
+/**
+ * PointOfSalePage – Style "client lourd" (desktop-like)
+ * - Fenêtre centrée type app (● ● ●), header module compact, barre d'état.
+ * - Panneau recherche (gauche) + Panier (droite) en split, scroll adaptatif.
+ * - Raccourcis clavier: Ctrl+F (focus recherche), Ctrl+Enter (finaliser), Esc (annuler).
+ */
 export default function PointOfSalePage() {
   const toast = useRef(null);
-  const navigate = useNavigate();
+  const searchRef = useRef(null);
 
   // --- Données mockées ---
   const medicaments = [
@@ -47,10 +52,10 @@ export default function PointOfSalePage() {
   // --- Calculs ---
   const total = useMemo(() => {
     const subtotal = panier.reduce((sum, item) => sum + item.quantite * item.prixUnitaire, 0);
-    return subtotal * (1 - remise / 100);
+    return subtotal * (1 - (remise || 0) / 100);
   }, [panier, remise]);
 
-  const monnaieRendue = useMemo(() => Math.max(0, montantRecu - total), [montantRecu, total]);
+  const monnaieRendue = useMemo(() => Math.max(0, (montantRecu || 0) - total), [montantRecu, total]);
 
   // --- Recherche médicament ---
   const filteredMedicaments = useMemo(() => {
@@ -77,9 +82,7 @@ export default function PointOfSalePage() {
           toast.current?.show({ severity: 'warn', summary: 'Stock insuffisant', detail: `Stock disponible : ${medicament.stock}.` });
           return prev;
         }
-        return prev.map((item) =>
-          item.id === medicament.id ? { ...item, quantite: item.quantite + 1 } : item
-        );
+        return prev.map((item) => (item.id === medicament.id ? { ...item, quantite: item.quantite + 1 } : item));
       }
       return [...prev, { ...medicament, quantite: 1 }];
     });
@@ -92,9 +95,7 @@ export default function PointOfSalePage() {
     } else if (quantite > item.stock) {
       toast.current?.show({ severity: 'warn', summary: 'Stock insuffisant', detail: `Stock disponible : ${item.stock}.` });
     } else {
-      setPanier((prev) =>
-        prev.map((i) => (i.id === item.id ? { ...i, quantite } : i))
-      );
+      setPanier((prev) => prev.map((i) => (i.id === item.id ? { ...i, quantite } : i)));
     }
   };
 
@@ -111,15 +112,13 @@ export default function PointOfSalePage() {
       toast.current?.show({ severity: 'warn', summary: 'Paiement requis', detail: 'Sélectionnez un type de paiement.' });
       return;
     }
-    if (montantRecu < total) {
+    if ((montantRecu || 0) < total) {
       toast.current?.show({ severity: 'warn', summary: 'Paiement insuffisant', detail: 'Montant reçu insuffisant.' });
       return;
     }
     confirmDialog({
-      message: 'Finaliser la vente ?',
-      header: 'Confirmation',
-      icon: 'pi pi-check-circle',
-      accept: () => {
+      message: 'Finaliser la vente ?'
+      , header: 'Confirmation', icon: 'pi pi-check-circle', accept: () => {
         const newVenteId = venteId || `VTE-2025-${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`;
         // Simuler mise à jour stock
         medicaments.forEach((med) => {
@@ -128,16 +127,12 @@ export default function PointOfSalePage() {
         });
         toast.current?.show({ severity: 'success', summary: 'Vente finalisée', detail: `Vente ${newVenteId} enregistrée.` });
         resetVente();
-      },
-    });
+      } });
   };
 
   const cancelVente = () => {
     confirmDialog({
-      message: 'Annuler la vente ?',
-      header: 'Confirmation',
-      icon: 'pi pi-exclamation-triangle',
-      acceptClassName: 'p-button-danger',
+      message: 'Annuler la vente ?', header: 'Confirmation', icon: 'pi pi-exclamation-triangle', acceptClassName: 'p-button-danger',
       accept: () => {
         setVenteStatut('Annulée');
         toast.current?.show({ severity: 'success', summary: 'Vente annulée', detail: 'La vente a été annulée.' });
@@ -149,7 +144,6 @@ export default function PointOfSalePage() {
   const suspendVente = () => {
     toast.current?.show({ severity: 'info', summary: 'Vente suspendue', detail: 'Vente mise en attente.' });
     setVenteStatut('En cours');
-    // Simuler sauvegarde pour reprise ultérieure
   };
 
   const resumeVente = () => {
@@ -175,6 +169,26 @@ export default function PointOfSalePage() {
     setVenteId(null);
   };
 
+  // --- Raccourcis clavier ---
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.ctrlKey && e.key === 'f') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (e.ctrlKey && e.key === 'Enter') {
+        e.preventDefault();
+        finalizeVente();
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cancelVente();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [finalizeVente]);
+
   // --- Rendus colonnes ---
   const quantiteBody = (row) => (
     <InputNumber
@@ -199,255 +213,127 @@ export default function PointOfSalePage() {
     />
   );
 
-  // --- Rendu principal ---
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#eef1f2' }}>
+    <div style={{ fontFamily: 'Inter,Segoe UI', background: '#e6e9ef', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Toast ref={toast} />
       <ConfirmDialog />
 
-      {/* Bandeau module */}
-      <div
-        style={{
-          background: 'linear-gradient(180deg,#16a085,#11967b)',
-          color: '#fff',
-          padding: '12px 20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <i className="pi pi-shopping-cart" style={{ fontSize: 18 }} />
-          <strong>Vente ▸ Point de vente</strong>
-        </div>
-        <div style={{ opacity: 0.9, fontSize: 12 }}>Plein écran · Optimisé clavier</div>
-      </div>
-
-      {/* Layout principal : Sidebar + Contenu */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <Sidebar title="Modules" />
-
-        <main style={{ flex: 1, padding: 16, minWidth: 0, display: 'flex', gap: 16 }}>
-          {/* Recherche et ajout */}
-          <div
-            style={{
-              width: 300,
-              background: '#fff',
-              border: '1px solid #d7d7d7',
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: '0 12px 26px rgba(0,0,0,0.06)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16,
-            }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <span className="p-float-label">
-                <InputText
-                  id="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Nom, code-barres, DCI"
-                  style={{ width: '100%' }}
-                />
-                <label htmlFor="search">Rechercher médicament</label>
-              </span>
-              {filteredMedicaments.map((med) => (
-                <div
-                  key={med.id}
-                  style={{
-                    padding: 8,
-                    borderBottom: '1px solid #e5e7eb',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <div>
-                    {med.nom} <br />
-                    <small style={{ color: '#6b7280' }}>
-                      Stock: {med.stock} | {med.dci}
-                    </small>
-                  </div>
-                  <Button
-                    icon="pi pi-plus"
-                    className="p-button-text p-button-sm"
-                    onClick={() => addToPanier(med)}
-                    disabled={med.stock === 0}
-                    tooltip="Ajouter au panier"
-                  />
-                </div>
-              ))}
-            </div>
-            <Button
-              label="Scanner code-barres"
-              icon="pi pi-barcode"
-              className="p-button-outlined"
-              onClick={() => toast.current?.show({ severity: 'info', summary: 'Scan', detail: 'Scan de code-barres simulé.' })}
-            />
+      {/* Fenêtre application */}
+      <div style={{ width: 'min(1400px,100vw)', height: 'min(900px,100vh)', background: '#f7f8fb', borderRadius: 12, boxShadow: '0 18px 40px rgba(0,0,0,0.18)', display: 'grid', gridTemplateRows: '44px 1fr 28px' }}>
+        {/* Barre de titre */}
+        <div style={{ background: 'linear-gradient(180deg,#fdfdfd,#f1f3f7)', borderBottom: '1px solid #e3e6ee', display: 'flex', alignItems: 'center', gap: 12, padding: '0 12px' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ width: 12, height: 12, borderRadius: 999, background: '#ff605c' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 999, background: '#ffbd44' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 999, background: '#00ca4e' }} />
           </div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#2f3b52' }}>MediFinder • Point de vente</div>
+        </div>
 
-          {/* Panier et finalisation */}
-          <div
-            style={{
-              flex: 1,
-              background: '#fff',
-              border: '1px solid #d7d7d7',
-              borderRadius: 12,
-              overflow: 'hidden',
-              boxShadow: '0 12px 26px rgba(0,0,0,0.06)',
-              display: 'flex',
-              flexDirection: 'column',
-              minHeight: 0,
-            }}
-          >
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid #e5e7eb' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        {/* Corps avec Sidebar + contenu */}
+        <div style={{ display: 'flex', minHeight: 0 }}>
+          <Sidebar title="Modules" />
+
+          <main style={{ flex: 1, padding: 16, display: 'grid', gridTemplateColumns: '320px 1fr', gap: 16, overflow: 'hidden' }}>
+            {/* Panneau gauche: Recherche/ajout */}
+            <div style={{ background: '#fff', border: '1px solid #dfe3ec', borderRadius: 12, padding: 16, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                <span className="p-float-label">
+                  <InputText
+                    id="search"
+                    ref={searchRef}
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Nom, code-barres, DCI"
+                    style={{ width: '100%' }}
+                  />
+                  <label htmlFor="search">Rechercher médicament</label>
+                </span>
+              </div>
+              <div style={{ marginTop: 12, overflow: 'auto', borderTop: '1px dashed #e5e7eb' }}>
+                {filteredMedicaments.map((med) => (
+                  <div key={med.id} style={{ padding: 8, borderBottom: '1px solid #eef1f6', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{med.nom}</div>
+                      <small style={{ color: '#6b7280' }}>Stock: {med.stock} · {med.dci}</small>
+                    </div>
+                    <Button icon="pi pi-plus" className="p-button-text p-button-sm" onClick={() => addToPanier(med)} disabled={med.stock === 0} tooltip="Ajouter au panier" />
+                  </div>
+                ))}
+              </div>
+              <Button label="Scanner code-barres" icon="pi pi-barcode" className="p-button-outlined" style={{ marginTop: 'auto' }} onClick={() => toast.current?.show({ severity: 'info', summary: 'Scan', detail: 'Scan de code-barres simulé.' })} />
+            </div>
+
+            {/* Panneau droit: Panier */}
+            <div style={{ background: '#fff', border: '1px solid #dfe3ec', borderRadius: 12, display: 'grid', gridTemplateRows: '56px 1fr auto', minHeight: 0 }}>
+              {/* Sous-header panier */}
+              <div style={{ padding: '12px 16px', borderBottom: '1px solid #eef1f6', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <span style={{ fontWeight: 700, color: '#16a085' }}>Panier</span>
                   <Tag value={venteStatut} severity={venteStatut === 'Finalisée' ? 'success' : venteStatut === 'Annulée' ? 'danger' : 'warning'} />
                 </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Button
-                    icon="pi pi-pause"
-                    className="p-button-text p-button-sm"
-                    onClick={suspendVente}
-                    disabled={venteStatut !== 'En cours'}
-                    tooltip="Suspendre"
-                  />
-                  <Button
-                    icon="pi pi-play"
-                    className="p-button-text p-button-sm"
-                    onClick={resumeVente}
-                    disabled={venteStatut !== 'En cours'}
-                    tooltip="Reprendre"
-                  />
-                  <Button
-                    icon="pi pi-times"
-                    className="p-button-text p-button-danger p-button-sm"
-                    onClick={cancelVente}
-                    disabled={venteStatut !== 'En cours'}
-                    tooltip="Annuler"
-                  />
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <Button icon="pi pi-pause" className="p-button-text p-button-sm" onClick={suspendVente} disabled={venteStatut !== 'En cours'} tooltip="Suspendre" />
+                  <Button icon="pi pi-play" className="p-button-text p-button-sm" onClick={resumeVente} disabled={venteStatut !== 'En cours'} tooltip="Reprendre" />
+                  <Button icon="pi pi-times" className="p-button-text p-button-danger p-button-sm" onClick={cancelVente} disabled={venteStatut !== 'En cours'} tooltip="Annuler" />
                 </div>
               </div>
-            </div>
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <DataTable
-                value={panier}
-                scrollable
-                scrollHeight="flex"
-                responsiveLayout="scroll"
-                emptyMessage="Aucun article dans le panier"
-              >
-                <Column field="nom" header="Médicament" style={{ minWidth: 200 }} />
-                <Column field="quantite" header="Quantité" body={quantiteBody} style={{ width: 120 }} />
-                <Column field="prixUnitaire" header="Prix unitaire" body={(row) => row.prixUnitaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} style={{ width: 140 }} />
-                <Column header="Sous-total" body={sousTotalBody} style={{ width: 140 }} />
-                <Column header="Actions" body={actionsBody} style={{ width: 80 }} />
-              </DataTable>
-            </div>
-            <div style={{ padding: 16, borderTop: '1px solid #e5e7eb', display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+
+              {/* Table panier */}
+              <div style={{ minHeight: 0 }}>
+                <DataTable value={panier} scrollable scrollHeight="flex" responsiveLayout="scroll" emptyMessage="Aucun article dans le panier">
+                  <Column field="nom" header="Médicament" style={{ minWidth: 200 }} />
+                  <Column field="quantite" header="Quantité" body={quantiteBody} style={{ width: 120 }} />
+                  <Column field="prixUnitaire" header="Prix unitaire" body={(row) => row.prixUnitaire.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} style={{ width: 140 }} />
+                  <Column header="Sous-total" body={sousTotalBody} style={{ width: 140 }} />
+                  <Column header="Actions" body={actionsBody} style={{ width: 80 }} />
+                </DataTable>
+              </div>
+
+              {/* Zone de finalisation */}
+              <div style={{ padding: 16, borderTop: '1px solid #eef1f6', display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0,1fr))', gap: 12 }}>
                 <span className="p-float-label">
-                  <InputText
-                    id="client"
-                    value={client}
-                    onChange={(e) => setClient(e.target.value)}
-                    style={{ width: '100%' }}
-                    disabled={venteStatut !== 'En cours'}
-                  />
+                  <InputText id="client" value={client} onChange={(e) => setClient(e.target.value)} style={{ width: '100%' }} disabled={venteStatut !== 'En cours'} />
                   <label htmlFor="client">Client (optionnel)</label>
                 </span>
                 <span className="p-float-label">
-                  <Dropdown
-                    id="vendeur"
-                    value={vendeur}
-                    options={users}
-                    optionLabel="nom"
-                    onChange={(e) => setVendeur(e.value)}
-                    style={{ width: '100%' }}
-                    disabled={venteStatut !== 'En cours'}
-                  />
+                  <Dropdown id="vendeur" value={vendeur} options={users} optionLabel="nom" onChange={(e) => setVendeur(e.value)} style={{ width: '100%' }} disabled={venteStatut !== 'En cours'} />
                   <label htmlFor="vendeur">Vendeur</label>
                 </span>
                 <span className="p-float-label">
-                  <Dropdown
-                    id="typePaiement"
-                    value={typePaiement}
-                    options={typesPaiement}
-                    onChange={(e) => setTypePaiement(e.value)}
-                    style={{ width: '100%' }}
-                    disabled={venteStatut !== 'En cours'}
-                  />
+                  <Dropdown id="typePaiement" value={typePaiement} options={typesPaiement} onChange={(e) => setTypePaiement(e.value)} style={{ width: '100%' }} disabled={venteStatut !== 'En cours'} />
                   <label htmlFor="typePaiement">Type de paiement</label>
                 </span>
                 <span className="p-float-label">
-                  <InputNumber
-                    id="montantRecu"
-                    value={montantRecu}
-                    onValueChange={(e) => setMontantRecu(e.value || 0)}
-                    style={{ width: '100%' }}
-                    disabled={venteStatut !== 'En cours'}
-                  />
+                  <InputNumber id="montantRecu" value={montantRecu} onValueChange={(e) => setMontantRecu(e.value || 0)} style={{ width: '100%' }} disabled={venteStatut !== 'En cours'} />
                   <label htmlFor="montantRecu">Montant reçu (Ar)</label>
                 </span>
                 <span className="p-float-label">
-                  <InputNumber
-                    id="remise"
-                    value={remise}
-                    onValueChange={(e) => setRemise(e.value || 0)}
-                    min={0}
-                    max={100}
-                    suffix="%"
-                    style={{ width: '100%' }}
-                    disabled={venteStatut !== 'En cours'}
-                  />
+                  <InputNumber id="remise" value={remise} onValueChange={(e) => setRemise(e.value || 0)} min={0} max={100} suffix="%" style={{ width: '100%' }} disabled={venteStatut !== 'En cours'} />
                   <label htmlFor="remise">Remise (%)</label>
                 </span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div>
-                  <strong>Total:</strong> {total.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} <br />
-                  <strong>Monnaie rendue:</strong> {monnaieRendue.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })}
-                </div>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <Button
-                    label="Imprimer reçu"
-                    icon="pi pi-print"
-                    className="p-button-outlined"
-                    onClick={printReceipt}
-                    disabled={venteStatut !== 'Finalisée'}
-                  />
-                  <Button
-                    label="Envoyer reçu"
-                    icon="pi pi-send"
-                    className="p-button-outlined"
-                    onClick={sendReceipt}
-                    disabled={venteStatut !== 'Finalisée'}
-                  />
-                  <Button
-                    label="Finaliser"
-                    icon="pi pi-check"
-                    className="p-button-success"
-                    onClick={finalizeVente}
-                    disabled={venteStatut !== 'En cours'}
-                  />
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div><strong>Total:</strong> {total.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })}</div>
+                    <div><strong>Monnaie rendue:</strong> {monnaieRendue.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })}</div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Button label="Imprimer reçu" icon="pi pi-print" className="p-button-outlined" onClick={printReceipt} disabled={venteStatut !== 'Finalisée'} />
+                    <Button label="Envoyer reçu" icon="pi pi-send" className="p-button-outlined" onClick={sendReceipt} disabled={venteStatut !== 'Finalisée'} />
+                    <Button label="Finaliser" icon="pi pi-check" className="p-button-success" onClick={finalizeVente} disabled={venteStatut !== 'En cours'} />
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-        </main>
-      </div>
+          </main>
+        </div>
 
-      {/* Styles inline responsive */}
-      <style>{`
-        @media (max-width: 1024px) {
-          main { padding: 12px !important; flex-direction: column; }
-          .p-datatable { font-size: 14px; }
-        }
-      `}</style>
+        {/* Barre d'état */}
+        <footer style={{ background: '#eef1f6', borderTop: '1px solid #e3e6ee', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 12, fontSize: 12, color: '#2f3b52' }}>
+          <span>État: prêt</span>
+          <span style={{ marginLeft: 'auto' }}>Total: {total.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} • Articles: {panier.length}</span>
+        </footer>
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { DataTable } from 'primereact/datatable';
 import { Column } from 'primereact/column';
 import { Button } from 'primereact/button';
@@ -11,6 +11,12 @@ import { Toolbar } from 'primereact/toolbar';
 import { InputNumber } from 'primereact/inputnumber';
 import Sidebar from '../components/Sidebar';
 
+/**
+ * PayrollPage – Style "client lourd" (desktop-like)
+ * - Fenêtre applicative avec barre de titre (● ● ●), contenu scrollable, barre d'état.
+ * - Table plein-hauteur, formulaires modaux, historique, raccourcis clavier.
+ * - Palette proche MediFinder (verts #16a085/#11967b, gris #eef1f2).
+ */
 export default function PayrollPage() {
   const toast = useRef(null);
 
@@ -33,7 +39,7 @@ export default function PayrollPage() {
       heuresSupplementaires: 10,
       primes: 50000,
       deductions: 20000,
-      salaireNet: 1000000 + 10 * 6250 + 50000 - 20000, // Salaire + HS (6250/heure) + primes - déductions
+      salaireNet: 1000000 + 10 * 6250 + 50000 - 20000,
       modePaiement: 'Virement',
       statut: 'Payé',
     },
@@ -98,7 +104,7 @@ export default function PayrollPage() {
     { label: 'Chèque', value: 'Chèque' },
   ];
 
-  // --- Filtrage ---
+  // --- Filtrage & métriques ---
   const filtered = useMemo(() => {
     let list = [...salaires];
     if (globalFilter) {
@@ -114,11 +120,44 @@ export default function PayrollPage() {
     return list;
   }, [salaires, globalFilter]);
 
+  const totaux = useMemo(() => {
+    const totalNet = filtered.reduce((s, r) => s + (r.salaireNet || 0), 0);
+    const totalBase = filtered.reduce((s, r) => s + (r.salaireBase || 0), 0);
+    const enAttente = filtered.filter((r) => r.statut !== 'Payé').length;
+    return { totalNet, totalBase, enAttente };
+  }, [filtered]);
+
   // --- Calcul salaire net ---
   const calculerSalaireNet = (form) => {
-    const tauxHoraireSup = 6250; // Exemple : 6250 MGA/heure supplémentaire
-    return form.salaireBase + form.heuresSupplementaires * tauxHoraireSup + form.primes - form.deductions;
+    const tauxHoraireSup = 6250; // 6250 MGA/heure supplémentaire
+    return (
+      (form.salaireBase || 0) +
+      (form.heuresSupplementaires || 0) * tauxHoraireSup +
+      (form.primes || 0) -
+      (form.deductions || 0)
+    );
   };
+
+  // --- Raccourcis clavier (Ctrl+N nouveau, Ctrl+F focus recherche, Ctrl+S enregistrer quand modal ouvert) ---
+  const searchRef = useRef(null);
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.ctrlKey && e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        openCreateSalaire();
+      }
+      if (e.ctrlKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        searchRef.current?.focus();
+      }
+      if (showSalaireForm && e.ctrlKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveSalaire();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [showSalaireForm, salaireForm]);
 
   // --- Actions ---
   const openCreateSalaire = () => {
@@ -154,8 +193,8 @@ export default function PayrollPage() {
     const employe = employes.find((e) => e.id_personne === salaireForm.id_personne);
     const salaireData = {
       ...salaireForm,
-      nom: employe.nom,
-      poste: employe.poste,
+      nom: employe?.nom || salaireForm.nom,
+      poste: employe?.poste || salaireForm.poste,
       salaireNet,
       id: salaireForm.id || `SAL-2025-${String(salaires.length + 1).padStart(3, '0')}`,
       datePaiement: salaireForm.statut === 'Payé' ? new Date().toISOString().split('T')[0] : null,
@@ -173,9 +212,7 @@ export default function PayrollPage() {
 
   const markAsPaid = (row) => {
     setSalaires((prev) =>
-      prev.map((s) =>
-        s.id === row.id ? { ...s, statut: 'Payé', datePaiement: new Date().toISOString().split('T')[0] } : s
-      )
+      prev.map((s) => (s.id === row.id ? { ...s, statut: 'Payé', datePaiement: new Date().toISOString().split('T')[0] } : s))
     );
     toast.current?.show({ severity: 'success', summary: 'Payé', detail: `Salaire ${row.id} marqué comme payé.` });
   };
@@ -196,7 +233,10 @@ export default function PayrollPage() {
       ['Salaire net', row.salaireNet.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })],
       ['Mode de paiement', row.modePaiement],
       ['Statut', row.statut],
-    ].join('\n');
+    ]
+      .map((r) => r.join(','))
+      .join('\n');
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -205,15 +245,6 @@ export default function PayrollPage() {
     a.click();
     URL.revokeObjectURL(url);
     toast.current?.show({ severity: 'success', summary: 'Bulletin généré', detail: `Bulletin pour ${row.nom} exporté.` });
-  };
-
-  const printBulletin = (row) => {
-    toast.current?.show({ severity: 'info', summary: 'Impression', detail: `Impression du bulletin pour ${row.nom} simulée.` });
-  };
-
-  const viewHistorique = (row) => {
-    setHistoriqueFor(row);
-    setShowHistorique(true);
   };
 
   const exportListePaie = () => {
@@ -236,6 +267,7 @@ export default function PayrollPage() {
         ].join(',')
       ),
     ].join('\n');
+
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -248,7 +280,7 @@ export default function PayrollPage() {
 
   const calculerCoutsSociaux = () => {
     const totalSalaires = filtered.reduce((sum, s) => sum + s.salaireNet, 0);
-    const coutsSociaux = totalSalaires * 0.2; // Exemple : 20% de charges sociales
+    const coutsSociaux = totalSalaires * 0.2; // 20% charges sociales (exemple)
     toast.current?.show({
       severity: 'info',
       summary: 'Coûts sociaux',
@@ -259,135 +291,100 @@ export default function PayrollPage() {
   // --- Rendus colonnes ---
   const salaireBody = (row, field) => row[field].toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' });
   const statutBody = (row) => (
-    <Tag
-      value={row.statut}
-      severity={row.statut === 'Payé' ? 'success' : row.statut === 'En attente' ? 'warning' : 'info'}
-    />
+    <Tag value={row.statut} severity={row.statut === 'Payé' ? 'success' : row.statut === 'En attente' ? 'warning' : 'info'} />
   );
   const actionsBody = (row) => (
     <div style={{ display: 'flex', gap: 6 }}>
-      <Button
-        icon="pi pi-pencil"
-        className="p-button-text p-button-sm"
-        onClick={() => openEditSalaire(row)}
-        tooltip="Modifier"
-        disabled={row.statut === 'Payé'}
-      />
-      <Button
-        icon="pi pi-check"
-        className="p-button-text p-button-sm"
-        onClick={() => markAsPaid(row)}
-        tooltip="Marquer comme payé"
-        disabled={row.statut === 'Payé'}
-      />
-      <Button
-        icon="pi pi-file"
-        className="p-button-text p-button-sm"
-        onClick={() => generateBulletin(row)}
-        tooltip="Générer bulletin"
-      />
-      <Button
-        icon="pi pi-print"
-        className="p-button-text p-button-sm"
-        onClick={() => printBulletin(row)}
-        tooltip="Imprimer bulletin"
-      />
-      <Button
-        icon="pi pi-history"
-        className="p-button-text p-button-sm"
-        onClick={() => viewHistorique(row)}
-        tooltip="Historique"
-      />
+      <Button icon="pi pi-pencil" className="p-button-text p-button-sm" onClick={() => openEditSalaire(row)} tooltip="Modifier" disabled={row.statut === 'Payé'} />
+      <Button icon="pi pi-check" className="p-button-text p-button-sm" onClick={() => markAsPaid(row)} tooltip="Marquer comme payé" disabled={row.statut === 'Payé'} />
+      <Button icon="pi pi-file" className="p-button-text p-button-sm" onClick={() => generateBulletin(row)} tooltip="Générer bulletin" />
     </div>
   );
 
-  const headerLeft = (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ fontWeight: 700, color: '#16a085' }}>Gestion des salaires</span>
-      <Tag value={`${filtered.length}`} style={{ background: '#e6faf4', color: '#0b6b57', border: 0 }} />
-    </div>
-  );
-
-  const headerRight = (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-      <span className="p-input-icon-left" style={{ minWidth: 220 }}>
-        <InputText
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          placeholder="Rechercher (ID, nom, poste, période)"
-        />
-      </span>
-      <Button label="Nouveau salaire" icon="pi pi-plus" onClick={openCreateSalaire} className="p-button-success" />
-      <Button label="Exporter paie" icon="pi pi-file-export" onClick={exportListePaie} className="p-button-outlined" />
-      <Button label="Coûts sociaux" icon="pi pi-calculator" onClick={calculerCoutsSociaux} className="p-button-outlined" />
-    </div>
-  );
-
-  // --- Rendu principal ---
+  // --- UI ---
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#eef1f2' }}>
+    <div style={{ fontFamily: 'Inter,Segoe UI', background: '#e6e9ef', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Toast ref={toast} />
 
-      {/* Bandeau module */}
-      <div
-        style={{
-          background: 'linear-gradient(180deg,#16a085,#11967b)',
-          color: '#fff',
-          padding: '12px 20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <i className="pi pi-money-bill" style={{ fontSize: 18 }} />
-          <strong>RH ▸ Gestion des salaires</strong>
-        </div>
-        <div style={{ opacity: 0.9, fontSize: 12 }}>Plein écran · Optimisé clavier</div>
-      </div>
-
-      {/* Layout principal : Sidebar + Contenu */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <Sidebar title="Modules" />
-
-        <main style={{ flex: 1, padding: 16, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
-          <div
-            style={{
-              background: '#fff',
-              border: '1px solid #d7d7d7',
-              borderRadius: 12,
-              overflow: 'hidden',
-              boxShadow: '0 12px 26px rgba(0,0,0,0.06)',
-              flex: 1,
-            }}
-          >
-            <Toolbar left={headerLeft} right={headerRight} style={{ border: 0 }} />
-            <DataTable
-              value={filtered}
-              paginator
-              rows={10}
-              rowsPerPageOptions={[10, 20, 50]}
-              scrollable
-              scrollHeight="flex"
-              responsiveLayout="scroll"
-              stripedRows
-            >
-              <Column field="id" header="ID" sortable style={{ minWidth: 120 }} />
-              <Column field="nom" header="Employé" sortable style={{ minWidth: 160 }} />
-              <Column field="poste" header="Poste" sortable style={{ minWidth: 140 }} />
-              <Column field="periode" header="Période" sortable style={{ minWidth: 120 }} />
-              <Column field="salaireBase" header="Salaire de base" body={(row) => salaireBody(row, 'salaireBase')} sortable style={{ minWidth: 140 }} />
-              <Column field="heuresTravaillees" header="Heures" sortable style={{ minWidth: 100 }} />
-              <Column field="heuresSupplementaires" header="Heures sup." sortable style={{ minWidth: 100 }} />
-              <Column field="primes" header="Primes" body={(row) => salaireBody(row, 'primes')} sortable style={{ minWidth: 120 }} />
-              <Column field="deductions" header="Déductions" body={(row) => salaireBody(row, 'deductions')} sortable style={{ minWidth: 120 }} />
-              <Column field="salaireNet" header="Salaire net" body={(row) => salaireBody(row, 'salaireNet')} sortable style={{ minWidth: 140 }} />
-              <Column field="modePaiement" header="Paiement" sortable style={{ minWidth: 120 }} />
-              <Column field="statut" header="Statut" body={statutBody} sortable style={{ minWidth: 120 }} />
-              <Column header="Actions" body={actionsBody} style={{ width: 260 }} frozen alignFrozen="right" />
-            </DataTable>
+      {/* Fenêtre applicative */}
+      <div className="app-window" style={{ width: 'min(1400px,100vw)', height: 'min(900px,100vh)', background: '#f7f8fb', borderRadius: 12, boxShadow: '0 18px 40px rgba(0,0,0,0.18)', display: 'grid', gridTemplateRows: '44px 1fr 28px' }}>
+        {/* Barre de titre */}
+        <div style={{ background: 'linear-gradient(180deg,#fdfdfd,#f1f3f7)', borderBottom: '1px solid #e3e6ee', display: 'flex', alignItems: 'center', gap: 12, padding: '0 12px' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ width: 12, height: 12, borderRadius: 999, background: '#ff605c' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 999, background: '#ffbd44' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 999, background: '#00ca4e' }} />
           </div>
-        </main>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#2f3b52' }}>MediFinder • RH ▸ Salaires</div>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#5d6b84' }}>
+            <span title="Ctrl+N">Ctrl+N : Nouveau</span>
+            <span title="Ctrl+F">Ctrl+F : Rechercher</span>
+            <span title="Ctrl+S">Ctrl+S : Enregistrer</span>
+          </div>
+        </div>
+
+        {/* Corps */}
+        <div style={{ display: 'flex', minHeight: 0 }}>
+          <Sidebar title="Modules" />
+          <main style={{ flex: 1, padding: 16, display: 'flex', flexDirection: 'column', gap: 16, overflow: 'auto' }}>
+            <div style={{ background: '#fff', borderRadius: 12, flex: 1, boxShadow: '0 12px 26px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column' }}>
+              <Toolbar
+                left={
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontWeight: 700, color: '#16a085' }}>Gestion des salaires</span>
+                    <Tag value={`${filtered.length}`} style={{ background: '#e6faf4', color: '#0b6b57', border: 0 }} />
+                    <Button label="Nouveau" icon="pi pi-plus" onClick={openCreateSalaire} className="p-button-success p-button-sm" />
+                  </div>
+                }
+                right={
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <InputText ref={searchRef} value={globalFilter} onChange={(e) => setGlobalFilter(e.target.value)} placeholder="Rechercher (ID, nom, poste, période)" style={{ minWidth: 260 }} />
+                    <Button label="Exporter" icon="pi pi-file-export" onClick={exportListePaie} className="p-button-outlined p-button-sm" />
+                    <Button label="Coûts sociaux" icon="pi pi-calculator" onClick={calculerCoutsSociaux} className="p-button-outlined p-button-sm" />
+                  </div>
+                }
+                style={{ border: 0 }}
+              />
+
+              <div style={{ flex: 1, minHeight: 0 }}>
+                <DataTable
+                  value={filtered}
+                  paginator
+                  rows={10}
+                  rowsPerPageOptions={[10, 20, 50]}
+                  scrollable
+                  scrollHeight="flex"
+                  responsiveLayout="scroll"
+                  stripedRows
+                >
+                  <Column field="id" header="ID" sortable style={{ minWidth: 120 }} />
+                  <Column field="nom" header="Employé" sortable style={{ minWidth: 160 }} />
+                  <Column field="poste" header="Poste" sortable style={{ minWidth: 140 }} />
+                  <Column field="periode" header="Période" sortable style={{ minWidth: 120 }} />
+                  <Column field="salaireBase" header="Salaire de base" body={(row) => salaireBody(row, 'salaireBase')} sortable style={{ minWidth: 140 }} />
+                  <Column field="heuresTravaillees" header="Heures" sortable style={{ minWidth: 100 }} />
+                  <Column field="heuresSupplementaires" header="Heures sup." sortable style={{ minWidth: 100 }} />
+                  <Column field="primes" header="Primes" body={(row) => salaireBody(row, 'primes')} sortable style={{ minWidth: 120 }} />
+                  <Column field="deductions" header="Déductions" body={(row) => salaireBody(row, 'deductions')} sortable style={{ minWidth: 120 }} />
+                  <Column field="salaireNet" header="Salaire net" body={(row) => salaireBody(row, 'salaireNet')} sortable style={{ minWidth: 140 }} />
+                  <Column field="modePaiement" header="Paiement" sortable style={{ minWidth: 120 }} />
+                  <Column field="statut" header="Statut" body={statutBody} sortable style={{ minWidth: 120 }} />
+                  <Column header="Actions" body={actionsBody} style={{ width: 220 }} frozen alignFrozen="right" />
+                </DataTable>
+              </div>
+            </div>
+          </main>
+        </div>
+
+        {/* Barre d'état */}
+        <footer style={{ background: '#eef1f6', borderTop: '1px solid #e3e6ee', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 14, fontSize: 12, color: '#2f3b52' }}>
+          <span>État: prêt</span>
+          <span>|</span>
+          <span>Total base (filtré): {totaux.totalBase.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })}</span>
+          <span>|</span>
+          <span>Total net (filtré): {totaux.totalNet.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })}</span>
+          <span style={{ marginLeft: 'auto', opacity: 0.8 }}>{totaux.enAttente} en attente</span>
+        </footer>
       </div>
 
       {/* Dialog Ajout/Modification salaire */}
@@ -474,13 +471,7 @@ export default function PayrollPage() {
             <label htmlFor="modePaiement">Mode de paiement</label>
           </span>
           <span className="p-float-label" style={{ gridColumn: '1 / -1' }}>
-            <InputNumber
-              value={calculerSalaireNet(salaireForm)}
-              mode="currency"
-              currency="MGA"
-              style={{ width: '100%' }}
-              disabled
-            />
+            <InputNumber value={calculerSalaireNet(salaireForm)} mode="currency" currency="MGA" style={{ width: '100%' }} disabled />
             <label htmlFor="salaireNet">Salaire net (calculé)</label>
           </span>
         </div>
@@ -509,12 +500,7 @@ export default function PayrollPage() {
             >
               <Column field="id" header="ID" style={{ minWidth: 120 }} />
               <Column field="periode" header="Période" style={{ minWidth: 120 }} />
-              <Column
-                field="salaireNet"
-                header="Salaire net"
-                body={(row) => row.salaireNet.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })}
-                style={{ minWidth: 140 }}
-              />
+              <Column field="salaireNet" header="Salaire net" body={(row) => row.salaireNet.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} style={{ minWidth: 140 }} />
               <Column field="modePaiement" header="Paiement" style={{ minWidth: 120 }} />
               <Column field="statut" header="Statut" body={statutBody} style={{ minWidth: 120 }} />
             </DataTable>
@@ -524,13 +510,6 @@ export default function PayrollPage() {
           </div>
         )}
       </Dialog>
-
-      {/* Styles inline responsive */}
-      <style>{`
-        @media (max-width: 1024px) {
-          main { padding: 12px !important; }
-        }
-      `}</style>
     </div>
   );
 }

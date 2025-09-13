@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { InputNumber } from 'primereact/inputnumber';
 import { Dropdown } from 'primereact/dropdown';
 import { Calendar } from 'primereact/calendar';
@@ -10,6 +10,13 @@ import { Column } from 'primereact/column';
 import { Toolbar } from 'primereact/toolbar';
 import Sidebar from '../components/Sidebar';
 
+/**
+ * PriceConfigurationPage – Style "client lourd"
+ * - Fenêtre desktop (barre de titre ● ● ● + barre d'état)
+ * - Panneau paramètres à gauche, prévisualisation & historique à droite
+ * - Raccourcis: Ctrl+P (prévisualiser), Ctrl+S (sauvegarder), Ctrl+Entrée (appliquer)
+ * - Zones scrollables pour les tableaux
+ */
 export default function PriceConfigurationPage() {
   const toast = useRef(null);
 
@@ -39,35 +46,25 @@ export default function PriceConfigurationPage() {
     dateApplication: new Date('2025-10-01'),
   });
 
-  // --- État pour l'historique des modifications ---
+  // --- Historique ---
   const [historique, setHistorique] = useState([
-    {
-      id: 'HIST-001',
-      date: new Date('2025-07-01'),
-      modifications: 'Marge globale définie à 30%, TVA à 20%',
-      utilisateur: 'Admin',
-    },
-    {
-      id: 'HIST-002',
-      date: new Date('2025-08-15'),
-      modifications: 'Marge cosmétiques augmentée à 50%',
-      utilisateur: 'Admin',
-    },
+    { id: 'HIST-001', date: new Date('2025-07-01'), modifications: 'Marge globale 30%, TVA 20%', utilisateur: 'Admin' },
+    { id: 'HIST-002', date: new Date('2025-08-15'), modifications: 'Cosmétiques -> marge 50%', utilisateur: 'Admin' },
   ]);
 
-  // --- Options pour les règles d'arrondi ---
+  // --- Options ---
   const reglesArrondi = [
     { label: 'Au centime près', value: 'Au centime près' },
     { label: 'À 5 centimes près', value: 'À 5 centimes près' },
     { label: 'À l’euro près', value: 'À l’euro près' },
   ];
 
-  // --- Prévisualisation des prix ---
-  const calculerPrixVente = (medicament) => {
-    const marge = configuration.margesParCategorie[medicament.categorie] || configuration.margeGlobale;
-    let prixVente = medicament.prixAchat * (1 + marge / 100) * (1 + configuration.tvaDefaut / 100);
+  // --- Prévisualisation ---
+  const calculerPrixVente = (m) => {
+    const marge = configuration.margesParCategorie[m.categorie] ?? configuration.margeGlobale;
+    let prixVente = m.prixAchat * (1 + marge / 100) * (1 + configuration.tvaDefaut / 100);
 
-    // Appliquer la règle d'arrondi
+    // Arrondi
     switch (configuration.regleArrondi) {
       case 'Au centime près':
         prixVente = Math.round(prixVente * 100) / 100;
@@ -76,93 +73,55 @@ export default function PriceConfigurationPage() {
         prixVente = Math.round(prixVente * 20) / 20;
         break;
       case 'À l’euro près':
-        prixVente = Math.round(prixVente);
-        break;
       default:
+        prixVente = Math.round(prixVente);
         break;
     }
 
-    // Appliquer les seuils
+    // Seuils
     prixVente = Math.max(configuration.prixMinimum, Math.min(prixVente, configuration.prixMaximum));
-
     return prixVente;
   };
 
-  const previewData = medicamentsMock.map((medicament) => ({
-    ...medicament,
-    prixVente: calculerPrixVente(medicament),
-  }));
+  const previewData = useMemo(
+    () => medicamentsMock.map((m) => ({ ...m, prixVente: calculerPrixVente(m) })),
+    [configuration]
+  );
 
   // --- Actions ---
+  const previsualiserImpact = () =>
+    toast.current?.show({ severity: 'info', summary: 'Prévisualisation', detail: 'Aperçu des prix actualisé.' });
+
   const sauvegarderConfiguration = () => {
     const nouvelleModification = {
-      id: `HIST-${(historique.length + 1).toString().padStart(3, '0')}`,
+      id: `HIST-${String(historique.length + 1).padStart(3, '0')}`,
       date: new Date(),
-      modifications: `Marge globale: ${configuration.margeGlobale}%, TVA: ${configuration.tvaDefaut}%, Arrondi: ${configuration.regleArrondi}, Marges par catégorie: ${JSON.stringify(
-        configuration.margesParCategorie
-      )}`,
+      modifications: `Marge: ${configuration.margeGlobale}%, TVA: ${configuration.tvaDefaut}%, Arrondi: ${configuration.regleArrondi}`,
       utilisateur: 'Admin',
     };
-    setHistorique([...historique, nouvelleModification]);
-    toast.current?.show({
-      severity: 'success',
-      summary: 'Sauvegarde',
-      detail: 'Configuration des prix sauvegardée.',
-    });
+    setHistorique((h) => [...h, nouvelleModification]);
+    toast.current?.show({ severity: 'success', summary: 'Sauvegardé', detail: 'Configuration enregistrée.' });
   };
 
-  const appliquerTarifs = () => {
-    toast.current?.show({
-      severity: 'info',
-      summary: 'Application',
-      detail: `Simulation : Nouveaux tarifs appliqués à partir du ${configuration.dateApplication.toLocaleDateString('fr-FR')}.`,
-    });
-  };
+  const appliquerTarifs = () =>
+    toast.current?.show({ severity: 'success', summary: 'Appliqué', detail: `Tarifs appliqués au ${configuration.dateApplication.toLocaleDateString('fr-FR')}.` });
 
-  const previsualiserImpact = () => {
-    toast.current?.show({
-      severity: 'info',
-      summary: 'Prévisualisation',
-      detail: 'Prévisualisation des prix mise à jour.',
-    });
-  };
+  // --- Handlers ---
+  const setCfg = (patch) => setConfiguration((c) => ({ ...c, ...patch }));
 
-  // --- Gestion des changements ---
-  const handleMargeGlobaleChange = (e) => {
-    setConfiguration({ ...configuration, margeGlobale: e.value });
-  };
-
-  const handleMargeCategorieChange = (categorie, value) => {
-    setConfiguration({
-      ...configuration,
-      margesParCategorie: { ...configuration.margesParCategorie, [categorie]: value },
-    });
-  };
-
-  const handleRegleArrondiChange = (e) => {
-    setConfiguration({ ...configuration, regleArrondi: e.value });
-  };
-
-  const handlePrixMinimumChange = (e) => {
-    setConfiguration({ ...configuration, prixMinimum: e.value });
-  };
-
-  const handlePrixMaximumChange = (e) => {
-    setConfiguration({ ...configuration, prixMaximum: e.value });
-  };
-
-  const handleTvaDefautChange = (e) => {
-    setConfiguration({ ...configuration, tvaDefaut: e.value });
-  };
-
-  const handleDateApplicationChange = (e) => {
-    setConfiguration({ ...configuration, dateApplication: e.value });
-  };
-
-  // --- Rendu colonnes ---
   const montantBody = (row, field) => row[field]?.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' });
+  const dateBody = (row) => new Date(row.date).toLocaleDateString('fr-FR');
 
-  const dateBody = (row) => row.date.toLocaleDateString('fr-FR');
+  // --- Raccourcis clavier ---
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.ctrlKey && e.key.toLowerCase() === 'p') { e.preventDefault(); previsualiserImpact(); }
+      if (e.ctrlKey && e.key.toLowerCase() === 's') { e.preventDefault(); sauvegarderConfiguration(); }
+      if (e.ctrlKey && (e.key === 'Enter')) { e.preventDefault(); appliquerTarifs(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [configuration, historique]);
 
   // --- Toolbar ---
   const headerLeft = (
@@ -175,184 +134,117 @@ export default function PriceConfigurationPage() {
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       <Button label="Prévisualiser" icon="pi pi-eye" onClick={previsualiserImpact} className="p-button-outlined" />
       <Button label="Sauvegarder" icon="pi pi-save" onClick={sauvegarderConfiguration} className="p-button-outlined" />
-      <Button label="Appliquer" icon="pi pi-check" onClick={appliquerTarifs} className="p-button-outlined" />
+      <Button label="Appliquer" icon="pi pi-check" onClick={appliquerTarifs} className="p-button-success" />
     </div>
   );
 
-  // --- Rendu principal ---
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: '#eef1f2' }}>
+    <div style={{ fontFamily: 'Inter, Segoe UI, system-ui', background: '#e6e9ef', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <Toast ref={toast} />
 
-      {/* Bandeau module */}
-      <div
-        style={{
-          background: 'linear-gradient(180deg,#16a085,#11967b)',
-          color: '#fff',
-          padding: '12px 20px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <i className="pi pi-cog" style={{ fontSize: 18 }} />
-          <strong>Comptabilité ▸ Configuration des Prix</strong>
+      {/* Fenêtre app */}
+      <div className="app-window" style={{ width: 'min(1400px,100vw)', height: 'min(900px,100vh)', background: '#f7f8fb', borderRadius: 12, boxShadow: '0 18px 40px rgba(0,0,0,0.18)', display: 'grid', gridTemplateRows: '44px 1fr 28px' }}>
+        {/* Barre de titre */}
+        <div style={{ background: 'linear-gradient(180deg,#fdfdfd,#f1f3f7)', borderBottom: '1px solid #e3e6ee', display: 'flex', alignItems: 'center', gap: 12, padding: '0 12px' }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <span style={{ width: 12, height: 12, borderRadius: 999, background: '#ff605c' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 999, background: '#ffbd44' }} />
+            <span style={{ width: 12, height: 12, borderRadius: 999, background: '#00ca4e' }} />
+          </div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#2f3b52' }}>MediFinder • Configuration des prix</div>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, opacity: 0.8, fontSize: 12 }}>
+            <span>Ctrl+P: Prévisualiser</span>
+            <span>Ctrl+S: Sauvegarder</span>
+            <span>Ctrl+Entrée: Appliquer</span>
+          </div>
         </div>
-        <div style={{ opacity: 0.9, fontSize: 12 }}>Plein écran · Optimisé clavier</div>
-      </div>
 
-      {/* Layout principal : Sidebar + Contenu */}
-      <div style={{ display: 'flex', flex: 1, minHeight: 0 }}>
-        <Sidebar title="Modules" />
+        {/* Corps */}
+        <div style={{ display: 'flex', minHeight: 0 }}>
+          <Sidebar title="Modules" />
 
-        <main style={{ flex: 1, padding: 16, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <Card
-            title="Paramètres de Prix"
-            style={{
-              background: '#fff',
-              border: '1px solid #d7d7d7',
-              borderRadius: 12,
-              boxShadow: '0 12px 26px rgba(0,0,0,0.06)',
-            }}
-          >
-            <Toolbar left={headerLeft} right={headerRight} style={{ border: 0 }} />
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Marge globale */}
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Marge globale par défaut (%)</label>
-                <InputNumber
-                  value={configuration.margeGlobale}
-                  onValueChange={handleMargeGlobaleChange}
-                  min={0}
-                  max={100}
-                  suffix="%"
-                  style={{ width: '200px' }}
-                />
-              </div>
+          <main style={{ flex: 1, padding: 16, display: 'grid', gridTemplateColumns: '380px 1fr', gap: 16, minHeight: 0, overflow: 'hidden' }}>
+            {/* Panneau paramètres */}
+            <Card style={{ height: '100%', overflow: 'auto', border: '1px solid #d7d7d7', borderRadius: 12, boxShadow: '0 12px 26px rgba(0,0,0,0.06)' }} title="Paramètres">
+              <Toolbar left={headerLeft} right={headerRight} style={{ border: 0, paddingLeft: 0, paddingRight: 0 }} />
 
-              {/* Marges par catégorie */}
-              <div>
-                <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>Marges par catégorie (%)</label>
-                {Object.keys(configuration.margesParCategorie).map((categorie) => (
-                  <div key={categorie} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                    <span style={{ width: '200px' }}>{categorie}</span>
-                    <InputNumber
-                      value={configuration.margesParCategorie[categorie]}
-                      onValueChange={(e) => handleMargeCategorieChange(categorie, e.value)}
-                      min={0}
-                      max={100}
-                      suffix="%"
-                      style={{ width: '150px' }}
-                    />
-                  </div>
-                ))}
-              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Marge globale (%)</label>
+                  <InputNumber value={configuration.margeGlobale} onValueChange={(e) => setCfg({ margeGlobale: e.value })} min={0} max={100} suffix="%" style={{ width: 180 }} />
+                </div>
 
-              {/* Règle d'arrondi */}
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Règle d’arrondi</label>
-                <Dropdown
-                  value={configuration.regleArrondi}
-                  options={reglesArrondi}
-                  onChange={handleRegleArrondiChange}
-                  style={{ width: '200px' }}
-                />
-              </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 8, fontWeight: 500 }}>Marges par catégorie (%)</label>
+                  {Object.keys(configuration.margesParCategorie).map((categorie) => (
+                    <div key={categorie} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ width: 210 }}>{categorie}</span>
+                      <InputNumber value={configuration.margesParCategorie[categorie]} onValueChange={(e) => setConfiguration((c) => ({ ...c, margesParCategorie: { ...c.margesParCategorie, [categorie]: e.value } }))} min={0} max={100} suffix="%" style={{ width: 140 }} />
+                    </div>
+                  ))}
+                </div>
 
-              {/* Seuils de prix */}
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Prix minimum de vente (MGA)</label>
-                <InputNumber
-                  value={configuration.prixMinimum}
-                  onValueChange={handlePrixMinimumChange}
-                  min={0}
-                  suffix=" MGA"
-                  style={{ width: '200px' }}
-                />
-              </div>
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Prix maximum autorisé (MGA)</label>
-                <InputNumber
-                  value={configuration.prixMaximum}
-                  onValueChange={handlePrixMaximumChange}
-                  min={0}
-                  suffix=" MGA"
-                  style={{ width: '200px' }}
-                />
-              </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Règle d’arrondi</label>
+                  <Dropdown value={configuration.regleArrondi} options={reglesArrondi} onChange={(e) => setCfg({ regleArrondi: e.value })} style={{ width: 220 }} />
+                </div>
 
-              {/* TVA */}
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>TVA par défaut (%)</label>
-                <InputNumber
-                  value={configuration.tvaDefaut}
-                  onValueChange={handleTvaDefautChange}
-                  min={0}
-                  max={100}
-                  suffix="%"
-                  style={{ width: '200px' }}
-                />
-              </div>
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Prix minimum (MGA)</label>
+                  <InputNumber value={configuration.prixMinimum} onValueChange={(e) => setCfg({ prixMinimum: e.value })} min={0} style={{ width: 220 }} suffix=" MGA" />
+                </div>
 
-              {/* Date d'application */}
-              <div>
-                <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Date d’application</label>
-                <Calendar
-                  value={configuration.dateApplication}
-                  onChange={handleDateApplicationChange}
-                  dateFormat="dd/mm/yy"
-                  style={{ width: '200px' }}
-                />
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Prix maximum (MGA)</label>
+                  <InputNumber value={configuration.prixMaximum} onValueChange={(e) => setCfg({ prixMaximum: e.value })} min={0} style={{ width: 220 }} suffix=" MGA" />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>TVA par défaut (%)</label>
+                  <InputNumber value={configuration.tvaDefaut} onValueChange={(e) => setCfg({ tvaDefaut: e.value })} min={0} max={100} suffix="%" style={{ width: 180 }} />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', marginBottom: 4, fontWeight: 500 }}>Date d’application</label>
+                  <Calendar value={configuration.dateApplication} onChange={(e) => setCfg({ dateApplication: e.value })} dateFormat="dd/mm/yy" style={{ width: 220 }} />
+                </div>
               </div>
+            </Card>
+
+            {/* Panneau résultats */}
+            <div style={{ display: 'grid', gridTemplateRows: '1fr 1fr', gap: 16, minHeight: 0 }}>
+              <Card title="Prévisualisation des prix" style={{ border: '1px solid #d7d7d7', borderRadius: 12, boxShadow: '0 12px 26px rgba(0,0,0,0.06)', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <DataTable value={previewData} scrollable scrollHeight="flex" responsiveLayout="scroll" emptyMessage="Aucun médicament">
+                    <Column field="id" header="ID" sortable style={{ minWidth: 120 }} />
+                    <Column field="nom" header="Médicament" sortable style={{ minWidth: 220 }} />
+                    <Column field="categorie" header="Catégorie" sortable style={{ minWidth: 200 }} />
+                    <Column field="prixAchat" header="Prix d’achat" body={(row) => montantBody(row, 'prixAchat')} sortable style={{ minWidth: 140 }} />
+                    <Column field="prixVente" header="Prix de vente" body={(row) => montantBody(row, 'prixVente')} sortable style={{ minWidth: 140 }} />
+                  </DataTable>
+                </div>
+              </Card>
+
+              <Card title="Historique des modifications" style={{ border: '1px solid #d7d7d7', borderRadius: 12, boxShadow: '0 12px 26px rgba(0,0,0,0.06)', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ flex: 1, minHeight: 0 }}>
+                  <DataTable value={historique} scrollable scrollHeight="flex" responsiveLayout="scroll" emptyMessage="Aucun historique">
+                    <Column field="id" header="ID" sortable style={{ minWidth: 120 }} />
+                    <Column field="date" header="Date" body={dateBody} sortable style={{ minWidth: 160 }} />
+                    <Column field="modifications" header="Modifications" sortable style={{ minWidth: 260 }} />
+                    <Column field="utilisateur" header="Utilisateur" sortable style={{ minWidth: 160 }} />
+                  </DataTable>
+                </div>
+              </Card>
             </div>
-          </Card>
+          </main>
+        </div>
 
-          {/* Prévisualisation */}
-          <Card
-            title="Prévisualisation des Prix"
-            style={{
-              background: '#fff',
-              border: '1px solid #d7d7d7',
-              borderRadius: 12,
-              boxShadow: '0 12px 26px rgba(0,0,0,0.06)',
-            }}
-          >
-            <DataTable value={previewData} responsiveLayout="scroll" emptyMessage="Aucun médicament à prévisualiser">
-              <Column field="id" header="ID" sortable />
-              <Column field="nom" header="Médicament" sortable />
-              <Column field="categorie" header="Catégorie" sortable />
-              <Column field="prixAchat" header="Prix d’achat" body={(row) => montantBody(row, 'prixAchat')} sortable />
-              <Column field="prixVente" header="Prix de vente" body={(row) => montantBody(row, 'prixVente')} sortable />
-            </DataTable>
-          </Card>
-
-          {/* Historique des modifications */}
-          <Card
-            title="Historique des Modifications"
-            style={{
-              background: '#fff',
-              border: '1px solid #d7d7d7',
-              borderRadius: 12,
-              boxShadow: '0 12px 26px rgba(0,0,0,0.06)',
-            }}
-          >
-            <DataTable value={historique} responsiveLayout="scroll" emptyMessage="Aucun historique disponible">
-              <Column field="id" header="ID" sortable />
-              <Column field="date" header="Date" body={dateBody} sortable />
-              <Column field="modifications" header="Modifications" sortable />
-              <Column field="utilisateur" header="Utilisateur" sortable />
-            </DataTable>
-          </Card>
-        </main>
+        {/* Barre d'état */}
+        <footer style={{ background: '#eef1f6', borderTop: '1px solid #e3e6ee', display: 'flex', alignItems: 'center', padding: '0 10px', fontSize: 12, color: '#2f3b52' }}>
+          <span>État: prêt</span>
+          <span style={{ marginLeft: 'auto', opacity: 0.8 }}>© 2025 MediFinder</span>
+        </footer>
       </div>
-
-      {/* Styles inline responsive */}
-      <style>{`
-        @media (max-width: 1024px) {
-          main { padding: 12px !important; }
-        }
-      `}</style>
     </div>
   );
 }
