@@ -13,16 +13,17 @@ import { Calendar } from 'primereact/calendar';
 import Sidebar from '../components/Sidebar';
 
 /**
- * ExpensesPage – Look & feel "interface client lourd"
- * - Fenêtre avec barre de titre (● ● ●), sidebar redimensionnable, barre d'état.
+ * ExpensesPage – Interface client lourd améliorée
+ * - Fenêtre avec barre de titre (● ● ●), sidebar redimensionnable, contenu scrollable, barre d'état.
  * - Raccourcis : Ctrl+N (nouvelle dépense), Ctrl+F (recherche), Ctrl+E (export CSV), Ctrl+B (analyse budgets), Esc (fermer dialogs).
- * - Tableau principal full-height + section Suivi budgétaire.
+ * - Tableau principal full-height avec scroll corrigé + section Suivi budgétaire.
+ * - Palette MediFinder : verts (#16a085/#0f8b6e), gris (#f0f2f6).
  */
 export default function ExpensesPage() {
   const toast = useRef(null);
   const searchRef = useRef(null);
 
-  // ===== Données mockées =====
+  // Données mockées
   const fournisseurs = [
     { id: 1, nom: 'ElectroMad', contact: 'contact@electromad.mg' },
     { id: 2, nom: 'AquaVita', contact: 'contact@aquavita.mg' },
@@ -89,7 +90,7 @@ export default function ExpensesPage() {
     { label: 'Chèque', value: 'Chèque' },
   ];
 
-  // ===== Sidebar redimensionnable =====
+  // Sidebar redimensionnable
   const [leftW, setLeftW] = useState(280);
   const resizingRef = useRef(false);
   useEffect(() => {
@@ -100,7 +101,7 @@ export default function ExpensesPage() {
     return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
   }, []);
 
-  // ===== Filtrage =====
+  // Filtrage
   const filtered = useMemo(() => {
     let list = [...depenses];
     if (globalFilter) {
@@ -116,7 +117,7 @@ export default function ExpensesPage() {
     return list;
   }, [depenses, globalFilter]);
 
-  // ===== Analyse budgétaire =====
+  // Analyse budgétaire
   const budgetStats = useMemo(() => {
     const stats = categories.reduce((acc, cat) => {
       const depensesCat = filtered.filter((d) => d.categorie === cat.value);
@@ -131,12 +132,24 @@ export default function ExpensesPage() {
     return stats;
   }, [filtered]);
 
-  // ===== Actions =====
+  // Totaux pour barre d'état
+  const totaux = useMemo(() => {
+    const totalRealise = filtered.reduce((sum, d) => sum + d.montant, 0);
+    const totalPrevu = filtered.reduce((sum, d) => sum + d.budgetPrevu, 0);
+    const depassements = Object.values(budgetStats).reduce((sum, stat) => sum + stat.depassement, 0);
+    return { totalRealise, totalPrevu, depassements };
+  }, [filtered, budgetStats]);
+
+  // Actions
   const openCreateDepense = () => {
     setDepenseForm({ id: null, montant: 0, description: '', date: null, categorie: 'Autres', fournisseur: null, numeroFacture: '', modePaiement: 'Virement', statut: 'En attente', justificatif: null, budgetPrevu: budgets['Autres'] || 0 });
     setShowDepenseForm(true);
   };
-  const openEditDepense = (row) => { setDepenseForm({ ...row, date: row.date ? new Date(row.date) : null }); setShowDepenseForm(true); };
+
+  const openEditDepense = (row) => {
+    setDepenseForm({ ...row, date: row.date ? new Date(row.date) : null });
+    setShowDepenseForm(true);
+  };
 
   const saveDepense = () => {
     if (!depenseForm.montant || !depenseForm.description || !depenseForm.date || !depenseForm.categorie) {
@@ -161,10 +174,23 @@ export default function ExpensesPage() {
     setShowDepenseForm(false);
   };
 
-  const validateDepense = (row) => { setDepenses((prev) => prev.map((d) => (d.id === row.id ? { ...d, statut: 'Payé' } : d))); toast.current?.show({ severity: 'success', summary: 'Validée', detail: `Dépense ${row.id} validée.` }); };
-  const rejectDepense = (row) => { setDepenses((prev) => prev.map((d) => (d.id === row.id ? { ...d, statut: 'Rejeté' } : d))); toast.current?.show({ severity: 'warn', summary: 'Rejetée', detail: `Dépense ${row.id} rejetée.` }); };
-  const joindreJustificatif = (row) => { toast.current?.show({ severity: 'info', summary: 'Justificatif', detail: `Simulation : Justificatif joint pour ${row.id} (fichier : justificatif_${row.id}.pdf).` }); };
-  const printRecu = (row) => { toast.current?.show({ severity: 'info', summary: 'Impression', detail: `Simulation : Impression du reçu pour ${row.id}.` }); };
+  const validateDepense = (row) => {
+    setDepenses((prev) => prev.map((d) => (d.id === row.id ? { ...d, statut: 'Payé' } : d)));
+    toast.current?.show({ severity: 'success', summary: 'Validée', detail: `Dépense ${row.id} validée.` });
+  };
+
+  const rejectDepense = (row) => {
+    setDepenses((prev) => prev.map((d) => (d.id === row.id ? { ...d, statut: 'Rejeté' } : d)));
+    toast.current?.show({ severity: 'warn', summary: 'Rejetée', detail: `Dépense ${row.id} rejetée.` });
+  };
+
+  const joindreJustificatif = (row) => {
+    toast.current?.show({ severity: 'info', summary: 'Justificatif', detail: `Simulation : Justificatif joint pour ${row.id} (fichier : justificatif_${row.id}.pdf).` });
+  };
+
+  const printRecu = (row) => {
+    toast.current?.show({ severity: 'info', summary: 'Impression', detail: `Simulation : Impression du reçu pour ${row.id}.` });
+  };
 
   const exportDepenses = () => {
     const csvContent = [
@@ -189,7 +215,7 @@ export default function ExpensesPage() {
     }
   };
 
-  // ===== Raccourcis clavier =====
+  // Raccourcis clavier
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') { setShowDepenseForm(false); }
@@ -200,14 +226,14 @@ export default function ExpensesPage() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [filtered]);
+  }, [exportDepenses, analyserDepassements]);
 
-  // ===== Colonnes =====
+  // Colonnes
   const montantBody = (row, field) => row[field].toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' });
   const fournisseurBody = (row) => (row.fournisseur ? row.fournisseur.nom : 'N/A');
   const statutBody = (row) => (<Tag value={row.statut} severity={row.statut === 'Payé' ? 'success' : row.statut === 'En attente' ? 'warning' : 'danger'} />);
   const actionsBody = (row) => (
-    <div style={{ display: 'flex', gap: 6 }}>
+    <div style={{ display: 'flex', gap: 8 }}>
       <Button icon="pi pi-pencil" className="p-button-text p-button-sm" onClick={() => openEditDepense(row)} tooltip="Modifier" disabled={row.statut === 'Payé'} />
       <Button icon="pi pi-check" className="p-button-text p-button-sm" onClick={() => validateDepense(row)} tooltip="Valider" disabled={row.statut !== 'En attente'} />
       <Button icon="pi pi-times" className="p-button-text p-button-sm p-button-danger" onClick={() => rejectDepense(row)} tooltip="Rejeter" disabled={row.statut !== 'En attente'} />
@@ -216,26 +242,26 @@ export default function ExpensesPage() {
     </div>
   );
 
-  // ===== Entêtes toolbar =====
+  // Entêtes toolbar
   const headerLeft = (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ fontWeight: 800, color: '#16a085' }}>Gestion des dépenses</span>
+      <span style={{ fontWeight: 700, fontSize: 16, color: '#16a085' }}>Gestion des dépenses</span>
       <Tag value={`${filtered.length}`} style={{ background: '#e6faf4', color: '#0b6b57', border: 0 }} />
     </div>
   );
   const headerRight = (
-    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-      <span className="p-input-icon-left" style={{ minWidth: 260 }}>
+    <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+      <span className="p-input-icon-left" style={{ minWidth: 280 }}>
         <i className="pi pi-search" />
-        <InputText ref={searchRef} value={globalFilter} onChange={(e) => setGlobalFilter(e.target.value)} placeholder="Rechercher (ID, description, catégorie, fournisseur)" />
+        <InputText ref={searchRef} value={globalFilter} onChange={(e) => setGlobalFilter(e.target.value)} placeholder="Rechercher (ID, description, catégorie, fournisseur)" className="p-inputtext-sm" />
       </span>
-      <Button label="Nouvelle dépense" icon="pi pi-plus" onClick={openCreateDepense} className="p-button-success" />
-      <Button label="Exporter CSV" icon="pi pi-file-export" onClick={exportDepenses} className="p-button-outlined" />
-      <Button label="Analyser budgets" icon="pi pi-chart-bar" onClick={analyserDepassements} className="p-button-outlined" />
+      <Button label="Nouvelle dépense" icon="pi pi-plus" onClick={openCreateDepense} className="p-button-success p-button-sm" />
+      <Button label="Exporter CSV" icon="pi pi-file-export" onClick={exportDepenses} className="p-button-outlined p-button-sm" />
+      <Button label="Analyser budgets" icon="pi pi-chart-bar" onClick={analyserDepassements} className="p-button-outlined p-button-sm" />
     </div>
   );
 
-  // ===== Layout client lourd =====
+  // Layout client lourd
   return (
     <div style={{
       fontFamily: 'Inter, Segoe UI, system-ui, -apple-system, Roboto, Arial, sans-serif',
@@ -244,102 +270,117 @@ export default function ExpensesPage() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      overflow: 'hidden',
+      padding: 16,
     }}>
-      <Toast ref={toast} />
-
-      {/* Fenêtre */}
+      <Toast ref={toast} position="top-right" />
       <div className="app-window" style={{
-        width: 'min(1450px, 100vw)',
-        height: 'min(920px, 100vh)',
-        background: '#f7f8fb',
+        width: 'min(1500px, 100vw)',
+        height: 'min(950px, 100vh)',
+        background: '#ffffff',
         borderRadius: 12,
-        boxShadow: '0 18px 40px rgba(0,0,0,0.18)',
+        boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
         display: 'grid',
-        gridTemplateRows: '44px 1fr 28px',
+        gridTemplateRows: '48px 1fr 32px',
         overflow: 'hidden',
       }}>
         {/* Barre de titre */}
         <div style={{
-          background: 'linear-gradient(180deg,#fdfdfd,#f1f3f7)',
-          borderBottom: '1px solid #e3e6ee',
+          background: 'linear-gradient(180deg,#f8f9fb,#ebedf2)',
+          borderBottom: '1px solid #d9dde5',
           display: 'flex',
           alignItems: 'center',
           gap: 12,
-          padding: '0 12px',
+          padding: '0 16px',
           userSelect: 'none',
         }}>
           <div style={{ display: 'flex', gap: 8 }}>
-            <span title="Close" style={{ width: 12, height: 12, borderRadius: 999, background: '#ff605c' }} />
-            <span title="Minimize" style={{ width: 12, height: 12, borderRadius: 999, background: '#ffbd44' }} />
-            <span title="Maximize" style={{ width: 12, height: 12, borderRadius: 999, background: '#00ca4e' }} />
+            <span title="Close" style={{ width: 12, height: 12, borderRadius: '50%', background: '#ff605c', cursor: 'pointer' }} />
+            <span title="Minimize" style={{ width: 12, height: 12, borderRadius: '50%', background: '#ffbd44', cursor: 'pointer' }} />
+            <span title="Maximize" style={{ width: 12, height: 12, borderRadius: '50%', background: '#00ca4e', cursor: 'pointer' }} />
           </div>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#2f3b52' }}>MediFinder • Dépenses</div>
-          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Tag severity="success" value="Ctrl+N Nouveau" />
-            <Tag severity="success" value="Ctrl+F Rechercher" />
-            <Tag severity="info" value="Ctrl+E Export" />
-            <Tag severity="warning" value="Ctrl+B Analyse" />
+          <div style={{ fontSize: 15, fontWeight: 600, color: '#2f3b52' }}>MediFinder • Comptabilité ▸ Dépenses</div>
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <Tag severity="success" value="Ctrl+N Nouveau" style={{ fontSize: 12 }} />
+            <Tag severity="info" value="Ctrl+F Rechercher" style={{ fontSize: 12 }} />
+            <Tag severity="info" value="Ctrl+E Export" style={{ fontSize: 12 }} />
+            <Tag severity="warning" value="Ctrl+B Analyse" style={{ fontSize: 12 }} />
           </div>
         </div>
 
-        {/* Corps : Sidebar redimensionnable + poignée + contenu */}
-        <div className="window-body" style={{ display: 'grid', gridTemplateColumns: `${leftW}px 6px 1fr`, minHeight: 0 }}>
+        {/* Corps : Sidebar + poignée + contenu */}
+        <div className="window-body" style={{ display: 'grid', gridTemplateColumns: `${leftW}px 8px 1fr`, minHeight: 0 }}>
           {/* Sidebar */}
-          <aside style={{ background: '#fff', borderRight: '1px solid #e3e6ee', overflow: 'auto' }}>
+          <aside style={{ background: '#f8f9fb', borderRight: '1px solid #d9dde5', overflow: 'auto', padding: 16 }}>
             <Sidebar title="Modules" />
           </aside>
 
-          {/* Poignée */}
-          <div role="separator" aria-orientation="vertical" title="Glisser pour redimensionner" onMouseDown={() => (resizingRef.current = true)} style={{ cursor: 'col-resize', background: '#e3e6ee' }} />
+          {/* Poignée redimensionnable */}
+          <div role="separator" aria-orientation="vertical" title="Glisser pour redimensionner" onMouseDown={() => (resizingRef.current = true)} style={{ cursor: 'col-resize', background: '#d9dde5', transition: 'background 0.2s' }} />
 
           {/* Contenu principal */}
-          <main style={{ display: 'grid', gridTemplateRows: '42px 1fr', minWidth: 0 }}>
+          <main style={{ display: 'grid', gridTemplateRows: '48px 1fr', minWidth: 0 }}>
             {/* Bandeau module */}
             <div style={{
-              background: 'linear-gradient(180deg,#16a085,#11967b)',
+              background: 'linear-gradient(180deg,#16a085,#0f8b6e)',
               color: '#fff',
-              padding: '8px 12px',
+              padding: '8px 16px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <i className="pi pi-wallet" style={{ fontSize: 18 }} />
-                <strong>Comptabilité ▸ Gestion des dépenses</strong>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <i className="pi pi-wallet" style={{ fontSize: 20 }} />
+                <strong style={{ fontSize: 16 }}>Comptabilité ▸ Gestion des dépenses</strong>
               </div>
-              <div style={{ opacity: 0.9, fontSize: 12 }}>Plein écran · Optimisé clavier</div>
+              <div style={{ fontSize: 13, opacity: 0.9 }}>Plein écran • Optimisé clavier</div>
             </div>
 
             {/* Contenu scrollable */}
-            <div style={{ padding: 12, minHeight: 0, overflow: 'auto', display: 'grid', gap: 16, gridTemplateRows: 'auto 1fr' }}>
+            <div style={{ padding: 16, overflow: 'auto', display: 'grid', gap: 16, gridTemplateRows: 'auto 1fr', minHeight: 0 }}>
               {/* Suivi budgétaire */}
-              <div style={{ background: '#fff', border: '1px solid #d7d7d7', borderRadius: 12, padding: 16, boxShadow: '0 12px 26px rgba(0,0,0,0.06)' }}>
-                <h3 style={{ margin: '0 0 16px', color: '#16a085' }}>Suivi budgétaire</h3>
-                <DataTable value={Object.entries(budgetStats).map(([cat, stat]) => ({ categorie: cat, ...stat }))} responsiveLayout="scroll">
-                  <Column field="categorie" header="Catégorie" sortable />
-                  <Column field="budgetPrevu" header="Budget prévu" body={(row) => row.budgetPrevu.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} sortable />
-                  <Column field="budgetRealise" header="Budget réalisé" body={(row) => row.budgetRealise.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} sortable />
-                  <Column field="depassement" header="Dépassement" body={(row) => row.depassement.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} sortable />
+              <div style={{ background: '#fff', border: '1px solid #d7d7d7', borderRadius: 8, padding: 16, boxShadow: '0 4px 12px rgba(0,0,0,0.05)', overflow: 'auto' }}>
+                <h3 style={{ margin: '0 0 12px', color: '#16a085', fontSize: 16, fontWeight: 600 }}>Suivi budgétaire</h3>
+                <DataTable
+                  value={Object.entries(budgetStats).map(([cat, stat]) => ({ categorie: cat, ...stat }))}
+                  responsiveLayout="scroll"
+                  scrollable
+                  scrollHeight="200px"
+                  tableStyle={{ fontSize: 14 }}
+                >
+                  <Column field="categorie" header="Catégorie" sortable style={{ minWidth: 150 }} />
+                  <Column field="budgetPrevu" header="Budget prévu" body={(row) => row.budgetPrevu.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} sortable style={{ minWidth: 140 }} />
+                  <Column field="budgetRealise" header="Budget réalisé" body={(row) => row.budgetRealise.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} sortable style={{ minWidth: 140 }} />
+                  <Column field="depassement" header="Dépassement" body={(row) => row.depassement.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })} sortable style={{ minWidth: 140 }} />
                 </DataTable>
               </div>
 
               {/* Liste des dépenses */}
-              <div style={{ background: '#fff', border: '1px solid #d7d7d7', borderRadius: 12, overflow: 'hidden', boxShadow: '0 12px 26px rgba(0,0,0,0.06)', display: 'grid', gridTemplateRows: 'auto 1fr' }}>
-                <Toolbar left={headerLeft} right={headerRight} style={{ border: 0 }} />
+              <div style={{ background: '#fff', border: '1px solid #d7d7d7', borderRadius: 8, overflow: 'hidden', boxShadow: '0 4px 12px rgba(0,0,0,0.05)', display: 'grid', gridTemplateRows: 'auto 1fr', minHeight: 0 }}>
+                <Toolbar left={headerLeft} right={headerRight} style={{ border: 0, padding: '8px 12px' }} />
                 <div style={{ minHeight: 0 }}>
-                  <DataTable value={filtered} paginator rows={10} rowsPerPageOptions={[10, 20, 50]} scrollable scrollHeight="flex" responsiveLayout="scroll" stripedRows>
-                    <Column field="id" header="ID" sortable style={{ minWidth: 120 }} />
-                    <Column field="montant" header="Montant" body={(row) => montantBody(row, 'montant')} sortable style={{ minWidth: 120 }} />
+                  <DataTable
+                    value={filtered}
+                    paginator
+                    rows={10}
+                    rowsPerPageOptions={[10, 20, 50]}
+                    scrollable
+                    scrollHeight="flex"
+                    responsiveLayout="scroll"
+                    stripedRows
+                    tableStyle={{ fontSize: 14 }}
+                  >
+                    <Column field="id" header="ID" sortable style={{ minWidth: 130 }} />
+                    <Column field="montant" header="Montant" body={(row) => montantBody(row, 'montant')} sortable style={{ minWidth: 130 }} />
                     <Column field="description" header="Description" sortable style={{ minWidth: 200 }} />
                     <Column field="date" header="Date" sortable style={{ minWidth: 120 }} />
-                    <Column field="categorie" header="Catégorie" sortable style={{ minWidth: 140 }} />
+                    <Column field="categorie" header="Catégorie" sortable style={{ minWidth: 150 }} />
                     <Column header="Fournisseur" body={fournisseurBody} sortable style={{ minWidth: 160 }} />
-                    <Column field="numeroFacture" header="N° Facture" sortable style={{ minWidth: 140 }} />
+                    <Column field="numeroFacture" header="N° Facture" sortable style={{ minWidth: 150 }} />
                     <Column field="modePaiement" header="Paiement" sortable style={{ minWidth: 120 }} />
                     <Column field="statut" header="Statut" body={statutBody} sortable style={{ minWidth: 120 }} />
-                    <Column field="justificatif" header="Justificatif" sortable style={{ minWidth: 140 }} />
-                    <Column header="Actions" body={actionsBody} style={{ width: 260 }} frozen alignFrozen="right" />
+                    <Column field="justificatif" header="Justificatif" sortable style={{ minWidth: 150 }} />
+                    <Column header="Actions" body={actionsBody} style={{ width: 200 }} frozen alignFrozen="right" />
                   </DataTable>
                 </div>
               </div>
@@ -348,69 +389,142 @@ export default function ExpensesPage() {
         </div>
 
         {/* Dialog Ajout/Modification dépense */}
-        <Dialog header={depenseForm.id ? 'Modifier dépense' : 'Nouvelle dépense'} visible={showDepenseForm} style={{ width: '760px', maxWidth: '95vw' }} modal onHide={() => setShowDepenseForm(false)}>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+        <Dialog
+          header={depenseForm.id ? 'Modifier dépense' : 'Nouvelle dépense'}
+          visible={showDepenseForm}
+          style={{ width: '760px', maxWidth: '95vw' }}
+          modal
+          onHide={() => setShowDepenseForm(false)}
+          className="p-dialog-sm"
+        >
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, padding: 16 }}>
             <span className="p-float-label">
-              <InputNumber value={depenseForm.montant} onValueChange={(e) => setDepenseForm({ ...depenseForm, montant: e.value || 0 })} mode="currency" currency="MGA" style={{ width: '100%' }} />
+              <InputNumber
+                value={depenseForm.montant}
+                onValueChange={(e) => setDepenseForm({ ...depenseForm, montant: e.value || 0 })}
+                mode="currency"
+                currency="MGA"
+                style={{ width: '100%' }}
+                className="p-inputtext-sm"
+              />
               <label htmlFor="montant">Montant</label>
             </span>
             <span className="p-float-label">
-              <InputText value={depenseForm.description} onChange={(e) => setDepenseForm({ ...depenseForm, description: e.target.value })} style={{ width: '100%' }} />
+              <InputText
+                value={depenseForm.description}
+                onChange={(e) => setDepenseForm({ ...depenseForm, description: e.target.value })}
+                style={{ width: '100%' }}
+                className="p-inputtext-sm"
+              />
               <label htmlFor="description">Description</label>
             </span>
             <span className="p-float-label">
-              <Calendar value={depenseForm.date} onChange={(e) => setDepenseForm({ ...depenseForm, date: e.value })} style={{ width: '100%' }} dateFormat="yy-mm-dd" />
+              <Calendar
+                value={depenseForm.date}
+                onChange={(e) => setDepenseForm({ ...depenseForm, date: e.value })}
+                style={{ width: '100%' }}
+                dateFormat="yy-mm-dd"
+                className="p-inputtext-sm"
+              />
               <label htmlFor="date">Date</label>
             </span>
             <span className="p-float-label">
-              <Dropdown value={depenseForm.categorie} options={categories} onChange={(e) => setDepenseForm({ ...depenseForm, categorie: e.value, budgetPrevu: budgets[e.value] || 0 })} style={{ width: '100%' }} />
+              <Dropdown
+                value={depenseForm.categorie}
+                options={categories}
+                onChange={(e) => setDepenseForm({ ...depenseForm, categorie: e.value, budgetPrevu: budgets[e.value] || 0 })}
+                style={{ width: '100%' }}
+                className="p-inputtext-sm"
+              />
               <label htmlFor="categorie">Catégorie</label>
             </span>
             <span className="p-float-label">
-              <Dropdown value={depenseForm.fournisseur} options={[{ label: 'Aucun', value: null }, ...fournisseurs.map((f) => ({ label: f.nom, value: f }))]} onChange={(e) => setDepenseForm({ ...depenseForm, fournisseur: e.value })} style={{ width: '100%' }} optionLabel="label" />
+              <Dropdown
+                value={depenseForm.fournisseur}
+                options={[{ label: 'Aucun', value: null }, ...fournisseurs.map((f) => ({ label: f.nom, value: f }))]}
+                onChange={(e) => setDepenseForm({ ...depenseForm, fournisseur: e.value })}
+                style={{ width: '100%' }}
+                optionLabel="label"
+                className="p-inputtext-sm"
+              />
               <label htmlFor="fournisseur">Fournisseur</label>
             </span>
             <span className="p-float-label">
-              <InputText value={depenseForm.numeroFacture} onChange={(e) => setDepenseForm({ ...depenseForm, numeroFacture: e.target.value })} style={{ width: '100%' }} />
+              <InputText
+                value={depenseForm.numeroFacture}
+                onChange={(e) => setDepenseForm({ ...depenseForm, numeroFacture: e.target.value })}
+                style={{ width: '100%' }}
+                className="p-inputtext-sm"
+              />
               <label htmlFor="numeroFacture">N° Facture</label>
             </span>
             <span className="p-float-label">
-              <Dropdown value={depenseForm.modePaiement} options={[{ label: 'Virement', value: 'Virement' }, { label: 'Espèces', value: 'Espèces' }, { label: 'Chèque', value: 'Chèque' }]} onChange={(e) => setDepenseForm({ ...depenseForm, modePaiement: e.value })} style={{ width: '100%' }} />
+              <Dropdown
+                value={depenseForm.modePaiement}
+                options={modesPaiement}
+                onChange={(e) => setDepenseForm({ ...depenseForm, modePaiement: e.value })}
+                style={{ width: '100%' }}
+                className="p-inputtext-sm"
+              />
               <label htmlFor="modePaiement">Mode de paiement</label>
             </span>
             <span className="p-float-label">
-              <InputText value={depenseForm.justificatif || ''} onChange={(e) => setDepenseForm({ ...depenseForm, justificatif: e.target.value })} style={{ width: '100%' }} placeholder="Nom du fichier (simulé)" />
+              <InputText
+                value={depenseForm.justificatif || ''}
+                onChange={(e) => setDepenseForm({ ...depenseForm, justificatif: e.target.value })}
+                style={{ width: '100%' }}
+                placeholder="Nom du fichier (simulé)"
+                className="p-inputtext-sm"
+              />
               <label htmlFor="justificatif">Justificatif</label>
             </span>
             <span className="p-float-label" style={{ gridColumn: '1 / -1' }}>
-              <InputNumber value={depenseForm.budgetPrevu} mode="currency" currency="MGA" style={{ width: '100%' }} disabled />
+              <InputNumber
+                value={depenseForm.budgetPrevu}
+                mode="currency"
+                currency="MGA"
+                style={{ width: '100%' }}
+                disabled
+                className="p-inputtext-sm"
+              />
               <label htmlFor="budgetPrevu">Budget prévu</label>
             </span>
           </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-            <Button label="Annuler" className="p-button-text" onClick={() => setShowDepenseForm(false)} />
-            <Button label="Enregistrer" icon="pi pi-save" className="p-button-success" onClick={saveDepense} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, marginTop: 20 }}>
+            <Button label="Annuler" className="p-button-text p-button-sm" onClick={() => setShowDepenseForm(false)} />
+            <Button label="Enregistrer" icon="pi pi-save" className="p-button-success p-button-sm" onClick={saveDepense} />
           </div>
         </Dialog>
 
         {/* Barre d'état */}
-        <footer style={{ background: '#eef1f6', borderTop: '1px solid #e3e6ee', display: 'flex', alignItems: 'center', padding: '0 10px', gap: 12, fontSize: 12, color: '#2f3b52' }}>
-          <span style={{ opacity: 0.9 }}>État: prêt</span>
-          <span style={{ opacity: 0.35 }}>|</span>
-          <span>Raccourcis: Ctrl+N • Ctrl+F • Ctrl+E • Ctrl+B • Esc</span>
+        <footer style={{ background: '#f0f2f6', borderTop: '1px solid #d9dde5', display: 'flex', alignItems: 'center', padding: '0 16px', gap: 16, fontSize: 13, color: '#2f3b52' }}>
+          <span>État: prêt</span>
+          <span style={{ opacity: 0.4 }}>|</span>
+          <span>Total prévu (filtré): {totaux.totalPrevu.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })}</span>
+          <span style={{ opacity: 0.4 }}>|</span>
+          <span>Total réalisé (filtré): {totaux.totalRealise.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })}</span>
+          <span style={{ opacity: 0.4 }}>|</span>
+          <span>Dépassements: {totaux.depassements.toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' })}</span>
           <span style={{ marginLeft: 'auto', opacity: 0.8 }}>© 2025 MediFinder</span>
         </footer>
       </div>
 
-      {/* Focus & responsive */}
+      {/* Styles */}
       <style>{`
-        .app-window input:focus, .app-window button:focus, .app-window .p-dropdown:focus {
-          outline: 2px solid #16a085 !important;
-          outline-offset: 1px;
+        .app-window { transition: all 0.2s ease; }
+        .app-window input:focus, .app-window button:focus, .app-window .p-dropdown:focus, .app-window .p-calendar:focus { outline: 2px solid #16a085 !important; outline-offset: 2px; }
+        .p-dialog-sm .p-dialog-content { padding: 0 !important; }
+        .p-button-sm { padding: 4px 12px !important; }
+        .p-inputtext-sm { font-size: 14px !important; }
+        .window-body .separator:hover { background: #16a085; }
+        @media (max-width: 1200px) { 
+          .window-body { grid-template-columns: 0 0 1fr !important; } 
+          .app-window { height: 100vh !important; border-radius: 0; width: 100vw !important; } 
         }
-        @media (max-width: 1200px) {
-          .window-body { grid-template-columns: 0 0 1fr !important; }
-          .app-window { height: 100vh !important; border-radius: 0; }
+        @media (max-width: 768px) { 
+          .p-datatable .p-datatable-thead > tr > th, 
+          .p-datatable .p-datatable-tbody > tr > td { padding: 8px !important; font-size: 13px !important; }
+          .p-toolbar { flex-wrap: wrap; gap: 8px; }
         }
       `}</style>
     </div>

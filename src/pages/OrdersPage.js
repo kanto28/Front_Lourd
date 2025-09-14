@@ -13,12 +13,6 @@ import { MultiSelect } from 'primereact/multiselect';
 import Sidebar from '../components/Sidebar';
 import { jsPDF } from 'jspdf';
 
-/**
- * OrdersPage – Look & feel "interface client lourd"
- * - Fenêtre desktop (● ● ●), sidebar redimensionnable, barre d'état.
- * - Raccourcis clavier : Ctrl+N (nouvelle), Ctrl+F (rechercher), Ctrl+E (export CSV), Ctrl+P (imprimer/ordre PDF), Esc (fermer dialogs).
- * - Table full-height, filtres, détails, édition, duplication, annulation, réception.
- */
 export default function OrdersPage() {
   const toast = useRef(null);
   const searchRef = useRef(null);
@@ -95,7 +89,11 @@ export default function OrdersPage() {
     let list = [...orders];
     if (globalFilter) {
       const q = globalFilter.toLowerCase();
-      list = list.filter((r) => r.id.toLowerCase().includes(q) || r.fournisseur.nom.toLowerCase().includes(q) || (r.notes || '').toLowerCase().includes(q));
+      list = list.filter((r) =>
+        r.id.toLowerCase().includes(q) ||
+        r.fournisseur.nom.toLowerCase().includes(q) ||
+        (r.notes || '').toLowerCase().includes(q)
+      );
     }
     if (statutFilter) list = list.filter((r) => r.statut === statutFilter);
     return list;
@@ -122,17 +120,37 @@ export default function OrdersPage() {
     }
     setShowForm(false);
   };
-  const duplicateOrder = (row) => { const newId = `CMD-2025-${String(orders.length + 1).padStart(3, '0')}`; setOrders((o) => [{ ...row, id: newId, statut: 'Brouillon', dateCommande: new Date().toISOString().slice(0, 10) }, ...o]); toast.current?.show({ severity: 'success', summary: 'Dupliquée', detail: 'Commande dupliquée.' }); };
+  const duplicateOrder = (row) => {
+    const newId = `CMD-2025-${String(orders.length + 1).padStart(3, '0')}`;
+    setOrders((o) => [{ ...row, id: newId, statut: 'Brouillon', dateCommande: new Date().toISOString().slice(0, 10) }, ...o]);
+    toast.current?.show({ severity: 'success', summary: 'Dupliquée', detail: 'Commande dupliquée.' });
+  };
   const cancelOrder = (row) => {
-    confirmDialog({ message: `Annuler la commande « ${row.id} » ?`, header: 'Confirmation', icon: 'pi pi-exclamation-triangle', acceptClassName: 'p-button-danger', accept: () => { setOrders((o) => o.map((x) => (x.id === row.id ? { ...x, statut: 'Annulée' } : x))); toast.current?.show({ severity: 'success', summary: 'Annulée', detail: 'Commande annulée.' }); } });
+    confirmDialog({
+      message: `Annuler la commande « ${row.id} » ?`,
+      header: 'Confirmation',
+      icon: 'pi pi-exclamation-triangle',
+      acceptClassName: 'p-button-danger',
+      accept: () => {
+        setOrders((o) => o.map((x) => (x.id === row.id ? { ...x, statut: 'Annulée' } : x)));
+        toast.current?.show({ severity: 'success', summary: 'Annulée', detail: 'Commande annulée.' });
+      }
+    });
   };
   const receiveOrder = (row) => {
     if (row.statut !== 'Expédiée') { toast.current?.show({ severity: 'warn', summary: 'Action impossible', detail: 'Seules les commandes expédiées peuvent être réceptionnées.' }); return; }
-    confirmDialog({ message: `Réceptionner la commande « ${row.id} » ?`, header: 'Confirmation réception', icon: 'pi pi-check-circle', accept: () => { setOrders((o) => o.map((x) => (x.id === row.id ? { ...x, statut: 'Livrée' } : x))); toast.current?.show({ severity: 'success', summary: 'Reçue', detail: 'Commande réceptionnée.' }); } });
+    confirmDialog({
+      message: `Réceptionner la commande « ${row.id} » ?`,
+      header: 'Confirmation réception',
+      icon: 'pi pi-check-circle',
+      accept: () => {
+        setOrders((o) => o.map((x) => (x.id === row.id ? { ...x, statut: 'Livrée' } : x)));
+        toast.current?.show({ severity: 'success', summary: 'Reçue', detail: 'Commande réceptionnée.' });
+      }
+    });
   };
   const sendEmail = (row) => { toast.current?.show({ severity: 'info', summary: 'Envoi', detail: `Envoi simulé au fournisseur ${row.fournisseur.nom}.` }); };
   const printOrder = (row) => {
-    // Génération PDF simple de la commande
     const doc = new jsPDF();
     doc.setFontSize(16); doc.text(`Commande ${row.id}`, 20, 20);
     doc.setFontSize(12);
@@ -154,18 +172,36 @@ export default function OrdersPage() {
   const exportCSV = () => {
     const csv = [
       ['N°', 'Fournisseur', 'Date cmd', 'Livraison prévue', 'Statut', 'Montant total'].join(','),
-      ...filtered.map((r) => [r.id, r.fournisseur.nom, r.dateCommande, r.dateLivraisonPrevue, r.statut, r.medicaments.reduce((s, m) => s + m.quantite * m.prixUnitaire, 0)].join(',')),
+      ...filtered.map((r) => [
+        r.id, r.fournisseur.nom, r.dateCommande, r.dateLivraisonPrevue, r.statut,
+        r.medicaments.reduce((s, m) => s + m.quantite * m.prixUnitaire, 0)
+      ].join(',')),
     ].join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'commandes.csv'; a.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'commandes.csv'; a.click();
+    URL.revokeObjectURL(url);
     toast.current?.show({ severity: 'success', summary: 'Export', detail: 'Commandes exportées (CSV).' });
   };
 
   // ===== Colonnes =====
   const statutBody = (row) => (
-    <Tag value={row.statut} severity={row.statut === 'Livrée' ? 'success' : row.statut === 'Expédiée' ? 'info' : row.statut === 'Confirmée' ? 'primary' : row.statut === 'Envoyée' ? 'warning' : row.statut === 'Annulée' ? 'danger' : 'secondary'} />
+    <Tag
+      value={row.statut}
+      severity={
+        row.statut === 'Livrée' ? 'success' :
+        row.statut === 'Expédiée' ? 'info' :
+        row.statut === 'Confirmée' ? 'primary' :
+        row.statut === 'Envoyée' ? 'warning' :
+        row.statut === 'Annulée' ? 'danger' : 'secondary'
+      }
+    />
   );
-  const totalBody = (row) => row.medicaments.reduce((sum, m) => sum + m.quantite * m.prixUnitaire, 0).toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' });
+  const totalBody = (row) =>
+    row.medicaments
+      .reduce((sum, m) => sum + m.quantite * m.prixUnitaire, 0)
+      .toLocaleString('fr-FR', { style: 'currency', currency: 'MGA' });
+
   const actionsBody = (row) => (
     <div style={{ display: 'flex', gap: 6 }}>
       <Button icon="pi pi-eye" className="p-button-text p-button-sm" onClick={() => openDetails(row)} tooltip="Détails" />
@@ -191,6 +227,7 @@ export default function OrdersPage() {
       <Tag value={`${filtered.length}`} style={{ background: '#e6faf4', color: '#0b6b57', border: 0 }} />
     </div>
   );
+
   const headerRight = (
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
       <Dropdown value={statutFilter} options={[{ label: 'Tous', value: null }, ...statuts]} onChange={(e) => setStatutFilter(e.value)} placeholder="Statut" style={{ minWidth: 140 }} />
@@ -216,14 +253,36 @@ export default function OrdersPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [filtered]);
 
-  // ===== UI style client lourd =====
+  // ===== UI style client lourd + FIX scroll/coupures =====
   return (
-    <div style={{ fontFamily: 'Inter, Segoe UI, system-ui, -apple-system, Roboto, Arial, sans-serif', background: '#e6e9ef', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+    <div
+      style={{
+        fontFamily: 'Inter, Segoe UI, system-ui, -apple-system, Roboto, Arial, sans-serif',
+        background: '#e6e9ef',
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden'
+      }}
+    >
       <Toast ref={toast} />
       <ConfirmDialog />
 
       {/* Fenêtre */}
-      <div className="app-window" style={{ width: 'min(1450px, 100vw)', height: 'min(920px, 100vh)', background: '#f7f8fb', borderRadius: 12, boxShadow: '0 18px 40px rgba(0,0,0,0.18)', display: 'grid', gridTemplateRows: '44px 1fr 28px', overflow: 'hidden' }}>
+      <div
+        className="app-window"
+        style={{
+          width: 'min(1450px, 100vw)',
+          height: 'min(920px, 100vh)',
+          background: '#f7f8fb',
+          borderRadius: 12,
+          boxShadow: '0 18px 40px rgba(0,0,0,0.18)',
+          display: 'grid',
+          gridTemplateRows: '44px 1fr 28px',
+          overflow: 'hidden'
+        }}
+      >
         {/* Barre de titre */}
         <div style={{ background: 'linear-gradient(180deg,#fdfdfd,#f1f3f7)', borderBottom: '1px solid #e3e6ee', display: 'flex', alignItems: 'center', gap: 12, padding: '0 12px', userSelect: 'none' }}>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -240,19 +299,25 @@ export default function OrdersPage() {
           </div>
         </div>
 
-        {/* Corps : Sidebar redimensionnable + poignée + contenu */}
-        <div className="window-body" style={{ display: 'grid', gridTemplateColumns: `${leftW}px 6px 1fr`, minHeight: 0 }}>
-          {/* Sidebar */}
+        {/* Corps : grid + minHeight:0 pour déléguer le scroll */}
+        <div className="window-body" style={{ display: 'grid', gridTemplateColumns: `${leftW}px 6px 1fr`, minHeight: 0, overflow: 'hidden' }}>
+          {/* Sidebar (scroll indépendante) */}
           <aside style={{ background: '#fff', borderRight: '1px solid #e3e6ee', overflow: 'auto' }}>
             <Sidebar title="Modules" />
           </aside>
 
           {/* Poignée */}
-          <div role="separator" aria-orientation="vertical" title="Glisser pour redimensionner" onMouseDown={() => (resizingRef.current = true)} style={{ cursor: 'col-resize', background: '#e3e6ee' }} />
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Glisser pour redimensionner"
+            onMouseDown={() => (resizingRef.current = true)}
+            style={{ cursor: 'col-resize', background: '#e3e6ee' }}
+          />
 
           {/* Contenu principal */}
           <main style={{ display: 'grid', gridTemplateRows: '42px 1fr', minWidth: 0 }}>
-            {/* Bandeau module */}
+            {/* Bandeau module (fixe) */}
             <div style={{ background: 'linear-gradient(180deg,#16a085,#11967b)', color: '#fff', padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <i className="pi pi-shopping-cart" style={{ fontSize: 18 }} />
@@ -261,19 +326,39 @@ export default function OrdersPage() {
               <div style={{ opacity: 0.9, fontSize: 12 }}>Plein écran · Optimisé clavier</div>
             </div>
 
-            {/* Contenu scrollable */}
+            {/* Zone scrollable */}
             <div style={{ padding: 12, minHeight: 0, overflow: 'auto', display: 'grid', gap: 16, gridTemplateRows: '1fr' }}>
-              <div style={{ background: '#fff', border: '1px solid #d7d7d7', borderRadius: 12, overflow: 'hidden', boxShadow: '0 12px 26px rgba(0,0,0,0.06)', display: 'grid', gridTemplateRows: 'auto 1fr' }}>
+              {/* Carte DataTable : header + table flex */}
+              <div style={{ background: '#fff', border: '1px solid #d7d7d7', borderRadius: 12, overflow: 'hidden', boxShadow: '0 12px 26px rgba(0,0,0,0.06)', display: 'grid', gridTemplateRows: 'auto 1fr', minHeight: 0 }}>
                 <Toolbar left={headerLeft} right={headerRight} style={{ border: 0 }} />
-                <div style={{ minHeight: 0 }}>
-                  <DataTable value={filtered} paginator rows={10} rowsPerPageOptions={[10, 20, 50]} scrollable scrollHeight="flex" selection={selected} onSelectionChange={(e) => setSelected(e.value)} dataKey="id" responsiveLayout="scroll" stripedRows>
+
+                {/* Wrapper nécessaire pour scrollHeight="flex" */}
+                <div style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+                  <DataTable
+                    value={filtered}
+                    paginator
+                    rows={10}
+                    rowsPerPageOptions={[10, 20, 50]}
+                    scrollable
+                    scrollHeight="flex"            // prend tout l'espace restant
+                    resizableColumns
+                    columnResizeMode="fit"         // "expand" si tu préfères
+                    tableStyle={{ minWidth: '1100px' }} // -> scroll horizontal si l’écran est étroit
+                    selection={selected}
+                    onSelectionChange={(e) => setSelected(e.value)}
+                    dataKey="id"
+                    responsiveLayout="scroll"
+                    stripedRows
+                  >
                     <Column field="id" header="N° Commande" sortable style={{ minWidth: 160 }} />
-                    <Column field="fournisseur.nom" header="Fournisseur" sortable style={{ minWidth: 200 }} />
+                    {/* ⚠️ Comme fournisseur est un objet, mieux vaut un body pour l’afficher correctement */}
+                    <Column header="Fournisseur" sortable body={(r) => r.fournisseur?.nom ?? ''} style={{ minWidth: 200 }} />
                     <Column field="dateCommande" header="Date commande" sortable style={{ minWidth: 140 }} />
                     <Column field="dateLivraisonPrevue" header="Livraison prévue" sortable style={{ minWidth: 140 }} />
                     <Column field="statut" header="Statut" body={statutBody} style={{ width: 140 }} />
                     <Column header="Montant total" body={totalBody} style={{ minWidth: 160, textAlign: 'right' }} />
-                    <Column header="Actions" body={actionsBody} style={{ width: 300 }} frozen alignFrozen="right" />
+                    {/* Colonne figée à droite */}
+                    <Column header="Actions" body={actionsBody} style={{ width: 320 }} frozen alignFrozen="right" />
                   </DataTable>
                 </div>
               </div>
@@ -301,16 +386,33 @@ export default function OrdersPage() {
               <label htmlFor="statut">Statut</label>
             </span>
             <span className="p-float-label" style={{ gridColumn: '1 / -1' }}>
-              <MultiSelect id="medicaments" value={form.medicaments} options={medicaments} optionLabel="nom" onChange={(e) => {
-                const selectedMeds = e.value.map((med) => ({ ...med, quantite: form.medicaments.find((m) => m.id === med.id)?.quantite || 1 }));
-                setForm({ ...form, medicaments: selectedMeds });
-              }} style={{ width: '100%' }} />
+              <MultiSelect
+                id="medicaments"
+                value={form.medicaments}
+                options={medicaments}
+                optionLabel="nom"
+                onChange={(e) => {
+                  const selectedMeds = e.value.map((med) => ({ ...med, quantite: form.medicaments.find((m) => m.id === med.id)?.quantite || 1 }));
+                  setForm({ ...form, medicaments: selectedMeds });
+                }}
+                style={{ width: '100%' }}
+              />
               <label htmlFor="medicaments">Médicaments</label>
             </span>
             {form.medicaments.map((med, index) => (
               <div key={med.id} style={{ gridColumn: '1 / -1', display: 'flex', gap: 16, alignItems: 'center' }}>
                 <span>{med.nom}</span>
-                <InputText type="number" value={med.quantite} onChange={(e) => { const newMeds = [...form.medicaments]; newMeds[index].quantite = parseInt(e.target.value) || 1; setForm({ ...form, medicaments: newMeds }); }} style={{ width: 100 }} placeholder="Quantité" />
+                <InputText
+                  type="number"
+                  value={med.quantite}
+                  onChange={(e) => {
+                    const newMeds = [...form.medicaments];
+                    newMeds[index].quantite = parseInt(e.target.value) || 1;
+                    setForm({ ...form, medicaments: newMeds });
+                  }}
+                  style={{ width: 100 }}
+                  placeholder="Quantité"
+                />
               </div>
             ))}
             <span className="p-float-label" style={{ gridColumn: '1 / -1' }}>
@@ -371,7 +473,10 @@ export default function OrdersPage() {
       {/* Focus & responsive */}
       <style>{`
         .app-window input:focus, .app-window button:focus, .app-window .p-dropdown:focus { outline: 2px solid #16a085 !important; outline-offset: 1px; }
-        @media (max-width: 1200px) { .window-body { grid-template-columns: 0 0 1fr !important; } .app-window { height: 100vh !important; border-radius: 0; } }
+        @media (max-width: 1200px) {
+          .window-body { grid-template-columns: 0 0 1fr !important; }
+          .app-window { height: 100vh !important; border-radius: 0; }
+        }
       `}</style>
     </div>
   );

@@ -28,18 +28,15 @@ export default function SuppliersPage() {
   const [statutFilter, setStatutFilter] = useState(null);
   const [selected, setSelected] = useState(null);
 
-  // Formulaire (création/édition)
   const emptyForm = { id: null, nom: "", adresse: "", telephone: "", email: "", contact: "", paiement: "", delai: 3, statut: "Actif", createdAt: new Date().toISOString().slice(0, 10), notes: "" };
   const [form, setForm] = useState(emptyForm);
   const [showForm, setShowForm] = useState(false);
 
-  // Historique
   const [showHistory, setShowHistory] = useState(false);
   const [historyFor, setHistoryFor] = useState(null);
 
   const statuts = [ { label: "Actif", value: "Actif" }, { label: "Inactif", value: "Inactif" } ];
 
-  // Filtrage
   const filtered = useMemo(() => {
     let list = [...rows];
     if (globalFilter) {
@@ -96,23 +93,23 @@ export default function SuppliersPage() {
 
   const openHistory = (row) => { setHistoryFor(row); setShowHistory(true); };
 
-const exportList = () => {
-  const header = [
-    "Nom", "Adresse", "Téléphone", "Email", "Contact", "Conditions de paiement", "Délai moyen (j)", "Statut", "Créé le", "Notes"
-  ];
-  const lines = filtered.map(r => [
-    r.nom, r.adresse, r.telephone, r.email, r.contact, r.paiement, r.delai, r.statut, r.createdAt, (r.notes || "").replace(/[\r\n]+/g, " ")
-  ].map(x => `"${String(x ?? '').replace(/"/g, "'")}"`).join(","));
-  const csv = [header.join(","), ...lines].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "fournisseurs.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-  toast.current?.show({ severity: "success", summary: "Exporté", detail: "Liste exportée en CSV." });
-};
+  const exportList = () => {
+    const header = [
+      "Nom", "Adresse", "Téléphone", "Email", "Contact", "Conditions de paiement", "Délai moyen (j)", "Statut", "Créé le", "Notes"
+    ];
+    const lines = filtered.map(r => [
+      r.nom, r.adresse, r.telephone, r.email, r.contact, r.paiement, r.delai, r.statut, r.createdAt, (r.notes || "").replace(/[\r\n]+/g, " ")
+    ].map(x => `"${String(x ?? '').replace(/"/g, "'")}"`).join(","));
+    const csv = [header.join(","), ...lines].join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "fournisseurs.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+    toast.current?.show({ severity: "success", summary: "Exporté", detail: "Liste exportée en CSV." });
+  };
 
   // --- Rendus colonnes ---
   const statutBody = (row) => <Tag value={row.statut} severity={row.statut === "Actif" ? "success" : "danger"} />;
@@ -126,7 +123,6 @@ const exportList = () => {
   );
   const addressBody = (row) => (<span>{row.adresse}<br/><small style={{ color: "#6b7280" }}>{row.telephone}</small></span>);
 
-  // --- Toolbar ---
   const headerLeft = (
     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
       <span style={{ fontWeight: 700, color: "#16a085" }}>Fournisseurs</span>
@@ -144,13 +140,36 @@ const exportList = () => {
     </div>
   );
 
-  // --- UI client lourd ---
+  // --- UI client lourd + fix scroll/coupures ---
   return (
-    <div style={{ fontFamily: "Inter, Segoe UI, system-ui, -apple-system, Arial", background: "#e6e9ef", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <div
+      style={{
+        fontFamily: "Inter, Segoe UI, system-ui, -apple-system, Arial",
+        background: "#e6e9ef",
+        minHeight: "100vh",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        overflow: "hidden" // évite une double barre sur la page
+      }}
+    >
       <Toast ref={toast} />
       <ConfirmDialog />
 
-      <div className="app-window" style={{ width: "min(1400px,100vw)", height: "min(900px,100vh)", background: "#f7f8fb", borderRadius: 12, boxShadow: "0 18px 40px rgba(0,0,0,0.18)", display: "grid", gridTemplateRows: "44px 1fr 28px", overflow: "hidden" }}>
+      {/* Fenêtre "desktop" */}
+      <div
+        className="app-window"
+        style={{
+          width: "min(1400px,100vw)",
+          height: "min(900px,100vh)",
+          background: "#f7f8fb",
+          borderRadius: 12,
+          boxShadow: "0 18px 40px rgba(0,0,0,0.18)",
+          display: "grid",
+          gridTemplateRows: "44px 1fr 28px",
+          overflow: "hidden"
+        }}
+      >
         {/* Barre de titre */}
         <div style={{ background: "linear-gradient(180deg,#fdfdfd,#f1f3f7)", borderBottom: "1px solid #e3e6ee", display: "flex", alignItems: "center", gap: 12, padding: "0 12px" }}>
           <div style={{ display: "flex", gap: 8 }}>
@@ -161,25 +180,59 @@ const exportList = () => {
           <div style={{ fontSize: 14, fontWeight: 600, color: "#2f3b52" }}>MediFinder • Gestion des Fournisseurs</div>
         </div>
 
-        {/* Corps */}
-        <div style={{ display: "flex", minHeight: 0 }}>
-          <Sidebar title="Modules" />
+        {/* Corps : IMPORTANT -> minHeight:0 + overflow hidden pour déléguer le scroll au main */}
+        <div style={{ display: "flex", minHeight: 0, overflow: "hidden" }}>
+          {/* Sidebar indépendante et scrollable */}
+          <div style={{ width: 280, flexShrink: 0, height: "100%", overflowY: "auto", background: "#f7f9fa", borderRight: "1px solid #e5e7eb" }}>
+            <Sidebar title="Modules" />
+          </div>
 
-          <main style={{ flex: 1, padding: 16, display: "flex", flexDirection: "column", gap: 16, overflow: "auto" }}>
-            <Toolbar left={headerLeft} right={headerRight} style={{ border: 0 }} />
+          {/* Zone centrale : overflow hidden + sous conteneur scrollable */}
+          <main
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: 16,
+              display: "flex",
+              flexDirection: "column",
+              gap: 16,
+              overflow: "hidden" // on scrolle l'intérieur, pas le main lui-même
+            }}
+          >
+            <Toolbar left={headerLeft} right={headerRight} style={{ border: 0, flexShrink: 0 }} />
 
-            <div style={{ flex: 1, minHeight: 0 }}>
-              <DataTable value={filtered} paginator rows={10} rowsPerPageOptions={[10,20,50]} scrollable scrollHeight="flex" selection={selected} onSelectionChange={(e) => setSelected(e.value)} dataKey="id" responsiveLayout="scroll" stripedRows>
-                <Column field="nom" header="Nom du fournisseur" sortable style={{ minWidth: 240 }} />
-                <Column header="Adresse / Téléphone" body={addressBody} style={{ minWidth: 260 }} />
-                <Column field="email" header="Email" style={{ minWidth: 220 }} />
-                <Column field="contact" header="Contact principal" style={{ minWidth: 200 }} />
-                <Column field="paiement" header="Conditions de paiement" style={{ minWidth: 200 }} />
-                <Column field="delai" header="Délai (j)" sortable style={{ width: 110, textAlign: "right" }} />
-                <Column field="statut" header="Statut" body={statutBody} style={{ width: 140 }} />
-                <Column field="createdAt" header="Créé le" sortable style={{ width: 140 }} />
-                <Column header="Actions" body={actionsBody} style={{ width: 220 }} frozen alignFrozen="right" />
-              </DataTable>
+            {/* Conteneur scrollable qui occupe tout l'espace : c'est LÀ que le tableau prend sa hauteur "flex" */}
+            <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "auto" }}>
+              {/* Wrapper pour DataTable pour activer scrollHeight="flex" */}
+              <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
+                <DataTable
+                  value={filtered}
+                  paginator
+                  rows={10}
+                  rowsPerPageOptions={[10, 20, 50]}
+                  scrollable
+                  scrollHeight="flex"        // prend la place restante (grâce au flex parent + minHeight:0)
+                  resizableColumns
+                  columnResizeMode="fit"     // ou "expand" si tu préfères
+                  tableStyle={{ minWidth: "1200px" }} // permet le scroll horizontal si l'écran est plus étroit
+                  selection={selected}
+                  onSelectionChange={(e) => setSelected(e.value)}
+                  dataKey="id"
+                  responsiveLayout="scroll"
+                  stripedRows
+                >
+                  <Column field="nom" header="Nom du fournisseur" sortable style={{ minWidth: 240 }} />
+                  <Column header="Adresse / Téléphone" body={addressBody} style={{ minWidth: 260 }} />
+                  <Column field="email" header="Email" style={{ minWidth: 220 }} />
+                  <Column field="contact" header="Contact principal" style={{ minWidth: 200 }} />
+                  <Column field="paiement" header="Conditions de paiement" style={{ minWidth: 200 }} />
+                  <Column field="delai" header="Délai (j)" sortable style={{ width: 110, textAlign: "right" }} />
+                  <Column field="statut" header="Statut" body={statutBody} style={{ width: 140 }} />
+                  <Column field="createdAt" header="Créé le" sortable style={{ width: 140 }} />
+                  {/* Frozen OK avec scrollable, mais garde une largeur fixe raisonnable */}
+                  <Column header="Actions" body={actionsBody} style={{ width: 220 }} frozen alignFrozen="right" />
+                </DataTable>
+              </div>
             </div>
           </main>
         </div>
